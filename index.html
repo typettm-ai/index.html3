@@ -1,355 +1,172 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-
-<title>車検証税額チェッカー β</title>
-
-<script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
-
-<style>
-
-body{
-    font-family:-apple-system,BlinkMacSystemFont,sans-serif;
-    max-width:700px;
-    margin:auto;
-    padding:20px;
-    background:#f5f5f5;
-}
-
-h1{
-    font-size:28px;
-}
-
-.card{
-    background:white;
-    border-radius:12px;
-    padding:16px;
-    margin-top:16px;
-    box-shadow:0 2px 6px rgba(0,0,0,.08);
-}
-
-input{
-    width:100%;
-    margin-top:12px;
-}
-
-.result{
-    font-size:18px;
-    line-height:2;
-}
-
-pre{
-    white-space:pre-wrap;
-    font-size:12px;
-    max-height:300px;
-    overflow:auto;
-}
-
-.status{
-    font-weight:bold;
-}
-
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>車検証税額チェッカー β</title>
+    <!-- Tesseract.js（OCRライブラリ）の読み込み -->
+    <script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            max-width: 700px;
+            margin: auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            font-size: 28px;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 16px;
+            box-shadow: 0 2px 6px rgba(0,0,0,.08);
+        }
+        input {
+            width: 100%;
+            margin-top: 12px;
+            box-sizing: border-box;
+            padding: 10px;
+        }
+        .result {
+            font-size: 18px;
+            line-height: 2;
+        }
+        .status {
+            font-weight: bold;
+        }
+    </style>
 </head>
 <body>
 
-<h1>車検証税額チェッカー β</h1>
-
-<p>
-画像は端末内のみで処理されます。<br>
-サーバーへ送信しません。
-</p>
-
-<input
-type="file"
-id="imageInput"
-accept="image/*">
-
-<div class="card">
-<div id="status" class="status">
-画像を選択してください
-</div>
-</div>
-
-<div class="card result">
-
-<h2>抽出結果</h2>
-
-型式：
-<span id="model">-</span>
-<br>
-
-初度登録：
-<span id="firstReg">-</span>
-<br>
-
-車両重量：
-<span id="weight">-</span>
-<br><br>
-
-重量税：
-<span id="weightTax">-</span>
-
-</div>
-
-<div class="card">
-
-<h2>OCR生データ</h2>
-
-<pre id="rawText"></pre>
-
-</div>
-
-<script>
-
-const statusEl =
-document.getElementById("status");
-
-document
-.getElementById("imageInput")
-.addEventListener(
-"change",
-async function(e){
-
-const file = e.target.files[0];
-
-if(!file) return;
-
-statusEl.innerText =
-"画像処理中...";
-
-const img = new Image();
-
-img.onload = async ()=>{
-
-try{
-
-const canvas =
-document.createElement("canvas");
-
-const ctx =
-canvas.getContext("2d");
-
-canvas.width =
-img.width;
-
-canvas.height =
-img.height;
-
-ctx.drawImage(
-img,
-0,
-0
-);
-
-const imageData =
-ctx.getImageData(
-0,
-0,
-canvas.width,
-canvas.height
-);
-
-const data =
-imageData.data;
-
-for(
-let i=0;
-i<data.length;
-i+=4
-){
-
-const gray =
-
-(
-data[i] +
-data[i+1] +
-data[i+2]
-) / 3;
-
-const bw =
-gray > 170
-? 255
-: 0;
-
-data[i] =
-bw;
-
-data[i+1] =
-bw;
-
-data[i+2] =
-bw;
-
-}
-
-ctx.putImageData(
-imageData,
-0,
-0
-);
-
-statusEl.innerText =
-"OCR実行中...";
-
-const result =
-await Tesseract.recognize(
-canvas,
-"jpn+eng"
-);
-
-const text =
-result.data.text;
-
-document
-.getElementById("rawText")
-.innerText = text;
-
-parseData(text);
-
-}
-catch(err){
-
-console.error(err);
-
-statusEl.innerText =
-"エラー";
-
-}
-
-};
-
-img.src =
-URL.createObjectURL(file);
-
-}
-);
-
-function parseData(text){
-
-const clean = text
-.replace(/[—ー－]/g,"-")
-.replace(/\s+/g," ")
-.toUpperCase();
-
-let model = "-";
-let firstReg = "-";
-let weight = 0;
-
-const modelMatch =
-clean.match(
-/(DBA|CBA|EBA|3BA|5BA)\s*-\s*[A-Z0-9]+/
-);
-
-if(modelMatch){
-
-model =
-modelMatch[0]
-.replace(/\s+/g,"");
-
-}
-
-const regMatch =
-
-clean.match(
-/平成\s*\d+\s*年\s*\d+\s*月/
-)
-
-||
-
-clean.match(
-/令和\s*\d+\s*年\s*\d+\s*月/
-);
-
-if(regMatch){
-
-firstReg =
-regMatch[0]
-.replace(/\s+/g,"");
-
-}
-
-const nums =
-clean.match(/\d{4}/g)
-|| [];
-
-nums.forEach(n=>{
-
-const v =
-parseInt(n);
-
-if(
-v >= 700 &&
-v <= 3000
-){
-
-if(v > weight){
-
-weight = v;
-
-}
-
-}
-
-});
-
-document
-.getElementById("model")
-.innerText =
-model;
-
-document
-.getElementById("firstReg")
-.innerText =
-firstReg;
-
-document
-.getElementById("weight")
-.innerText =
-weight
-? weight + "kg"
-: "-";
-
-document
-.getElementById("weightTax")
-.innerText =
-getWeightTax(weight);
-
-statusEl.innerText =
-"読み取り完了";
-
-}
-
-function getWeightTax(weight){
-
-if(weight <= 0)
-return "-";
-
-if(weight <= 500)
-return "8,200円";
-
-if(weight <= 1000)
-return "16,400円";
-
-if(weight <= 1500)
-return "24,600円";
-
-if(weight <= 2000)
-return "32,800円";
-
-if(weight <= 2500)
-return "41,000円";
-
-if(weight <= 3000)
-return "49,200円";
-
-return "要確認";
-
-}
-
-</script>
-
+    <h1>車検証税額チェッカー β</h1>
+    <p>
+        画像は端末内のみで処理されます。<br>
+        サーバーへ送信しません。
+    </p>
+    
+    <input type="file" id="imageInput" accept="image/*">
+    
+    <div class="card">
+        <div id="status" class="status">画像を選択してください</div>
+    </div>
+
+    <!-- 抽出された綺麗に整理された結果と税額だけを表示 -->
+    <div class="card result">
+        <h2>抽出結果</h2>
+        型式： <span id="model">-</span> <br>
+        初度登録： <span id="firstReg">-</span> <br>
+        車両重量： <span id="weight">-</span> <br><br>
+        <strong>重量税： <span id="weightTax">-</span></strong>
+    </div>
+
+    <!-- ⚠️ 「OCR生データ」を表示していた <div class="card"> 部分は完全に削除しました -->
+
+    <script>
+        const statusEl = document.getElementById("status");
+
+        document.getElementById("imageInput").addEventListener("change", async function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            statusEl.innerText = "画像処理中...";
+            const img = new Image();
+
+            img.onload = async () => {
+                try {
+                    const canvas = document.createElement("canvas");
+                    const ctx = canvas.getContext("2d");
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+
+                    // 白黒化（二値化）処理
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const data = imageData.data;
+                    for (let i = 0; i < data.length; i += 4) {
+                        const gray = (data[i] + data[i+1] + data[i+2]) / 3;
+                        const bw = gray > 170 ? 255 : 0;
+                        data[i] = bw;
+                        data[i+1] = bw;
+                        data[i+2] = bw;
+                    }
+                    ctx.putImageData(imageData, 0, 0);
+
+                    statusEl.innerText = "OCR実行中...";
+                    
+                    // OCRの実行
+                    const result = await Tesseract.recognize(canvas, "jpn+eng");
+                    const text = result.data.text;
+
+                    // ❌ 元のコードにあった rawText への書き込み処理を消去
+
+                    // 解析・税額判定ロジックへ生テキストを渡す
+                    parseData(text);
+
+                } catch (err) {
+                    console.error(err);
+                    statusEl.innerText = "エラーが発生しました";
+                }
+            };
+            img.src = URL.createObjectURL(file);
+        });
+
+        // テキスト解析・画面表示関数
+        function parseData(text) {
+            const clean = text
+                .replace(/[—ー－]/g, "-")
+                .replace(/\s+/g, " ")
+                .toUpperCase();
+
+            let model = "-";
+            let firstReg = "-";
+            let weight = 0;
+
+            // 型式の抽出
+            const modelMatch = clean.match(/(DBA|CBA|EBA|3BA|5BA)\s*-\s*[A-Z0-9]+/);
+            if (modelMatch) {
+                model = modelMatch[0].replace(/\s+/g, "");
+            }
+
+            // 初度登録の抽出
+            const regMatch = clean.match(/平成\s*\d+\s*年\s*\d+\s*月/) || clean.match(/令和\s*\d+\s*年\s*\d+\s*月/);
+            if (regMatch) {
+                firstReg = regMatch[0].replace(/\s+/g, "");
+            }
+
+            // 車両重量の抽出
+            const nums = clean.match(/\d{4}/g) || [];
+            nums.forEach(n => {
+                const v = parseInt(n);
+                if (v >= 700 && v <= 3000) {
+                    if (v > weight) {
+                        weight = v;
+                    }
+                }
+            });
+
+            // 結果を画面に反映（生データは出さず、判定結果のみ）
+            document.getElementById("model").innerText = model;
+            document.getElementById("firstReg").innerText = firstReg;
+            document.getElementById("weight").innerText = weight ? weight + "kg" : "-";
+            document.getElementById("weightTax").innerText = getWeightTax(weight);
+            
+            statusEl.innerText = "読み取り完了";
+        }
+
+        // 重量税の税額テーブル
+        function getWeightTax(weight) {
+            if (weight <= 0) return "-";
+            if (weight <= 500) return "8,200円";
+            if (weight <= 1000) return "16,400円";
+            if (weight <= 1500) return "24,600円";
+            if (weight <= 2000) return "32,800円";
+            if (weight <= 2500) return "41,000円";
+            if (weight <= 3000) return "49,200円";
+            return "要確認";
+        }
+    </script>
 </body>
 </html>
