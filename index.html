@@ -24,11 +24,14 @@
             margin-top: 16px;
             box-shadow: 0 2px 6px rgba(0,0,0,.08);
         }
-        input {
+        input, select {
             width: 100%;
             margin-top: 12px;
             box-sizing: border-box;
             padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
         }
         .result {
             font-size: 18px;
@@ -36,6 +39,7 @@
         }
         .status {
             font-weight: bold;
+            color: #333;
         }
         .monthly-box {
             background: #f0f7ff;
@@ -45,6 +49,10 @@
             font-size: 16px;
             border-radius: 0 8px 8px 0;
             line-height: 1.6;
+        }
+        .select-container {
+            margin-top: 8px;
+            margin-bottom: 8px;
         }
     </style>
 </head>
@@ -68,20 +76,40 @@
         型式： <span id="model">-</span> <br>
         初度登録： <span id="firstReg">-</span> <br>
         車両重量： <span id="weight">-</span> <br><br>
+        
         <strong>重量税： <span id="weightTax">-</span></strong><br>
         <strong>自動車税（種別割）年額： <span id="carTaxYearly">-</span></strong>
         
         <!-- 月割り金額の表示エリア -->
         <div class="monthly-box">
-            <strong>新規登録時の月割り税額（目安）：</strong><br>
-            <span id="carTaxMonthly">初度登録月が読み取られると計算されます</span><br>
-            <small style="color: #666;">※普通車は登録月の翌月から3月までの残り月数で計算（100円未満切り捨て）。軽自動車は月割制度がないため4月登録扱い以外は0円となります。</small>
+            <strong>自動車税（種別割）月割り計算：</strong>
+            <div class="select-container">
+                <label for="monthSelect">💡 新規登録する月を指定：</label>
+                <select id="monthSelect">
+                    <option value="4">4月登録 (5月〜翌3月の11ヶ月分)</option>
+                    <option value="5">5月登録 (6月〜翌3月の10ヶ月分)</option>
+                    <option value="6">6月登録 (7月〜翌3月の9ヶ月分)</option>
+                    <option value="7">7月登録 (8月〜翌3月の8ヶ月分)</option>
+                    <option value="8">8月登録 (9月〜翌3月の7ヶ月分)</option>
+                    <option value="9">9月登録 (10月〜翌3月の6ヶ月分)</option>
+                    <option value="10">10月登録 (11月〜翌3月の5ヶ月分)</option>
+                    <option value="11">11月登録 (12月〜翌3月の4ヶ月分)</option>
+                    <option value="12">12月登録 (11月〜翌3月の3ヶ月分)</option>
+                    <option value="1">1月登録 (2月〜翌3月の2ヶ月分)</option>
+                    <option value="2">2月登録 (3月の1ヶ月分)</option>
+                    <option value="3">3月登録 (当期分なし・0円)</option>
+                </select>
+            </div>
+            <span id="carTaxMonthly">車両重量が読み取られると月割り額が計算されます</span><br>
+            <small style="color: #666;">※普通車は登録月の翌月から3月までの残り月数で計算します（100円未満切り捨て）。</small>
         </div>
     </div>
 
     <script>
         const statusEl = document.getElementById("status");
+        let currentYearlyTax = 0; // 現在の自動車税年額を保持する変数
 
+        // 画像選択時のイベント
         document.getElementById("imageInput").addEventListener("change", async function(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -95,6 +123,4 @@
                     const ctx = canvas.getContext("2d");
                     canvas.width = img.width;
                     canvas.height = img.height;
-                    ctx.drawImage(img, 0, 0);
-
-                    // 白黒化（二値化）処理Normally I can help with things like this, but I don't seem to have access to that content. You can try again or ask me for something else.
+                    ctx.Normally I can help with things like this, but I don't seem to have access to that content. You can try again or ask me for something else.
