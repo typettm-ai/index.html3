@@ -3,18 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>車検証税額チェッカー β</title>
+    <title>車検証税額チェッカー β (手動修正対応)</title>
     <!-- Tesseract.js（OCRライブラリ）の読み込み -->
     <script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body {font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 700px; margin: auto; padding: 20px; background: #f5f5f5; }
         h1 {font-size: 28px; }
         .card {background: white; border-radius: 12px; padding: 16px; margin-top: 16px; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
-        input, select {width: 100%; margin-top: 12px; box-sizing: border-box; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 6px; }
+        input[type="file"], select {width: 100%; margin-top: 12px; box-sizing: border-box; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 6px; }
+        
+        /* 手動修正用の入力欄のスタイル */
+        .input-inline {width: 120px; padding: 8px; margin: 4px 8px 4px 0; font-size: 16px; border: 1px solid #ccc; border-radius: 6px; text-align: right;}
+        
         /* 実行ボタンのスタイル */
         .btn-submit {width: 100%; margin-top: 16px; padding: 14px; font-size: 18px; font-weight: bold; color: white; background-color: #0066cc; border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,.2); transition: background 0.2s; }
         .btn-submit:hover {background-color: #0052a3; }
         .btn-submit:disabled {background-color: #cccccc; cursor: not-allowed; box-shadow: none; }
+        
+        /* 再計算ボタンのスタイル */
+        .btn-recalc {background-color: #28a745; margin-top: 12px;}
+        .btn-recalc:hover {background-color: #218838; }
+
         .result {font-size: 18px; line-height: 2; }
         .status {font-weight: bold; color: #333; }
         .monthly-box {background: #f0f7ff; border-left: 4px solid #0066cc; padding: 12px; margin-top: 12px; font-size: 16px; border-radius: 0 8px 8px 0; line-height: 1.6; }
@@ -23,10 +32,7 @@
 </head>
 <body>
     <h1>車検証税額チェッカー β</h1>
-    <p>
-        画像は端末内のみで処理されます。<br>
-        サーバーへ送信しません。
-    </p>
+    <p>画像は端末内のみで処理されます（サーバー非送信）。</p>
 
     <!-- 設定カード -->
     <div class="card">
@@ -49,20 +55,32 @@
                 <option value="3">3月登録 (当期分なし・0円)</option>
             </select>
         </div>
-        <button type="button" id="submitBtn" class="btn-submit">税額を計算する</button>
+        <button type="button" id="submitBtn" class="btn-submit">画像を読み取る</button>
     </div>
 
     <div class="card">
-        <div id="status" class="status">画像を選択して「税額を計算する」を押してください</div>
+        <div id="status" class="status">画像を選択して「画像を読み取る」を押してください</div>
     </div>
 
     <!-- 抽出された結果と税額を表示 -->
     <div class="card result">
-        <h2>抽出結果</h2>
+        <h2>抽出結果と修正</h2>
+        <small style="color: #666; display: block; margin-bottom: 12px; line-height: 1.4;">
+            ※読み取りが間違っている場合は、下の数値を直接書き換えて「修正して再計算」を押してください。
+        </small>
+
         型式： <span id="model">-</span> <br>
         初度登録： <span id="firstReg">-</span> <br>
-        総排気量又は定格出力： <span id="cc">-</span> <br>
-        車両重量： <span id="weight">-</span> <br><br>
+        
+        <!-- 手動修正できるようにinputタグに変更 -->
+        <label for="ccInput">総排気量：</label> 
+        <input type="number" step="0.01" id="ccInput" class="input-inline" placeholder="例: 1.49"> L <br>
+        
+        <label for="weightInput">車両重量：</label> 
+        <input type="number" id="weightInput" class="input-inline" placeholder="例: 1250"> kg <br>
+
+        <button type="button" id="recalcBtn" class="btn-submit btn-recalc">修正して再計算</button>
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
         
         <strong>重量税： <span id="weightTax">-</span></strong><br>
         <strong>自動車税（種別割）年額： <span id="carTaxYearly">-</span></strong>
@@ -70,7 +88,7 @@
         <!-- 月割り金額の表示エリア -->
         <div class="monthly-box">
             <strong>自動車税（種別割）月割り計算結果：</strong><br>
-            <span id="carTaxMonthly">計算を実行するとここに結果が表示されます</span><br>
+            <span id="carTaxMonthly">排気量を入力し計算を実行すると表示されます</span><br>
             <small style="color: #666;">※普通車は登録月の翌月から3月までの残り月数で計算します（100円未満切り捨て）。</small>
         </div>
     </div>
@@ -78,25 +96,26 @@
 <script>
 const statusEl = document.getElementById("status");
 const submitBtn = document.getElementById("submitBtn");
-let currentYearlyTax = 0; // 自動車税の年額を保持する変数
-let selectedFile = null;  // 選択されたファイルを保持する変数
+const recalcBtn = document.getElementById("recalcBtn");
 
-// 1. 画像が選択されたらファイルを保持
+let currentYearlyTax = 0; // 自動車税の年額
+let selectedFile = null;  // 選択ファイル
+let currentIsNewTaxRate = true; // 新税率かどうかのフラグ（再計算時に使用）
+
+// 画像選択
 document.getElementById("imageInput").addEventListener("change", function(e) {
     selectedFile = e.target.files[0];
     if (selectedFile) {
-        statusEl.innerText = "画像が選択されました。「税額を計算する」を押してください。";
+        statusEl.innerText = "画像が選択されました。「画像を読み取る」を押してください。";
     }
 });
 
-// 2. 実行ボタンが押された時に処理を開始
+// OCR実行
 submitBtn.addEventListener("click", async function() {
     if (!selectedFile) {
         alert("車検証の画像を選択してください。");
         return;
     }
-    
-    // 連打防止・処理中の状態にする
     submitBtn.disabled = true;
     statusEl.innerText = "画像処理中...";
     
@@ -122,47 +141,44 @@ submitBtn.addEventListener("click", async function() {
             statusEl.innerText = "OCR実行中（文字を解析しています）...";
             
             const result = await Tesseract.recognize(canvas, "jpn+eng");
-            const text = result.data.text;
-            
-            // テキストを解析して結果を表示
-            parseData(text);
+            parseData(result.data.text);
             
         } catch (err) {
             console.error(err);
             statusEl.innerText = "エラーが発生しました。別の画像で試してください。";
         } finally {
-            // ボタンを元に戻す
             submitBtn.disabled = false;
         }
     };
     img.src = URL.createObjectURL(selectedFile);
 });
 
-// 登録月を変更したときもリアルタイムで月割りを再計算する機能
+// 再計算ボタンのイベント
+recalcBtn.addEventListener("click", function() {
+    calculateTaxes();
+    statusEl.innerText = "手動入力された値で再計算しました。";
+});
+
+// 月が変更された際のリアルタイム更新
 document.getElementById("monthSelect").addEventListener("change", function() {
     updateMonthlyDisplay();
 });
 
-// テキスト解析・結果反映
+// OCRのテキストを解析してフォームにセットする
 function parseData(text) {
-    const clean = text
-        .replace(/[—ー－]/g, "-")
-        .replace(/\s+/g, " ")
-        .toUpperCase();
+    const clean = text.replace(/[—ー－]/g, "-").replace(/\s+/g, " ").toUpperCase();
         
     let model = "-";
     let firstReg = "-";
-    let weight = 0;
-    let ccValue = 0; // 排気量を数値で保持 (L単位)
-    let isNewTaxRate = true; // 令和元年10月1日以降（新税率）かどうかのフラグ
+    let weight = "";
+    let ccValue = ""; 
+    currentIsNewTaxRate = true; // デフォルトは新税率
     
-    // 型式の抽出
+    // 型式
     const modelMatch = clean.match(/(DBA|CBA|EBA|3BA|5BA)\s*-\s*[A-Z0-9]+/);
-    if (modelMatch) {
-        model = modelMatch[0].replace(/\s+/g, "");
-    }
+    if (modelMatch) model = modelMatch[0].replace(/\s+/g, "");
     
-    // 初度登録の抽出
+    // 初度登録（新税率判定含む）
     const regMatch = clean.match(/(平成|令和)\s*(\d+)\s*年\s*(\d+)\s*月/);
     if (regMatch) {
         firstReg = regMatch[0].replace(/\s+/g, "");
@@ -170,49 +186,55 @@ function parseData(text) {
         const year = parseInt(regMatch[2]);
         const month = parseInt(regMatch[3]);
         
-        // 令和元年(2019年)10月以降かどうかの判定
         if (era === "平成") {
-            isNewTaxRate = false;
-        } else if (era === "令和") {
-            if (year === 1 && month < 10) {
-                isNewTaxRate = false;
-            }
+            currentIsNewTaxRate = false;
+        } else if (era === "令和" && year === 1 && month < 10) {
+            currentIsNewTaxRate = false;
         }
     }
     
-    // 総排気量又は定格出力の抽出 (例: 1.49L や 1.99L など)
+    // 総排気量 (小数点付きの数字+L を探す)
     const ccMatch = clean.match(/(\d+\.\d+)\s*L/);
-    if (ccMatch) {
-        ccValue = parseFloat(ccMatch[1]);
-    }
+    if (ccMatch) ccValue = parseFloat(ccMatch[1]);
 
-    // 車両重量の抽出
+    // 車両重量 (700~3000の4桁を探す)
+    let tempWeight = 0;
     const nums = clean.match(/\d{4}/g) || [];
     nums.forEach(n => {
         const v = parseInt(n);
-        if (v >= 700 && v <= 3000) {
-            if (v > weight) { weight = v; }
-        }
+        if (v >= 700 && v <= 3000 && v > tempWeight) { tempWeight = v; }
     });
+    if (tempWeight > 0) weight = tempWeight;
     
-    // 各種税額の計算
-    const weightTaxAmount = getWeightTax(weight);
-    currentYearlyTax = getCarTaxYearly(ccValue, isNewTaxRate);
-    
-    // 画面に値をセット
+    // 画面にセット
     document.getElementById("model").innerText = model;
     document.getElementById("firstReg").innerText = firstReg;
-    document.getElementById("cc").innerText = ccValue ? ccValue + "L" : "-";
-    document.getElementById("weight").innerText = weight ? weight + "kg" : "-";
-    document.getElementById("weightTax").innerText = weightTaxAmount ? weightTaxAmount.toLocaleString() + "円" : "-";
-    document.getElementById("carTaxYearly").innerText = currentYearlyTax ? currentYearlyTax.toLocaleString() + "円" : "-";
+    document.getElementById("ccInput").value = ccValue;
+    document.getElementById("weightInput").value = weight;
     
-    // 月割り額の表示を更新
-    updateMonthlyDisplay();
-    statusEl.innerText = "読み取り完了";
+    // 計算実行
+    calculateTaxes();
+    statusEl.innerText = "読み取り完了（間違っている場合は数値を修正してください）";
 }
 
-// 月割り計算結果を画面に反映する関数
+// フォームの数値から税金を計算して表示する
+function calculateTaxes() {
+    const ccInputVal = document.getElementById("ccInput").value;
+    const weightInputVal = document.getElementById("weightInput").value;
+    
+    const cc = parseFloat(ccInputVal) || 0;
+    const w = parseInt(weightInputVal) || 0;
+
+    const weightTaxAmount = getWeightTax(w);
+    currentYearlyTax = getCarTaxYearly(cc, currentIsNewTaxRate);
+    
+    document.getElementById("weightTax").innerText = weightTaxAmount > 0 ? weightTaxAmount.toLocaleString() + "円" : "-";
+    document.getElementById("carTaxYearly").innerText = currentYearlyTax > 0 ? currentYearlyTax.toLocaleString() + "円" : "-";
+    
+    updateMonthlyDisplay();
+}
+
+// 月割り表示の更新
 function updateMonthlyDisplay() {
     const selectEl = document.getElementById("monthSelect");
     const selectedMonth = parseInt(selectEl.value);
@@ -226,11 +248,11 @@ function updateMonthlyDisplay() {
         }
         monthlyTaxEl.innerHTML = text;
     } else {
-        monthlyTaxEl.innerText = "総排気量が読み取られると月割り額が計算されます";
+        monthlyTaxEl.innerText = "排気量を入力し計算を実行すると表示されます";
     }
 }
 
-// 重量税の税額テーブル
+// 重量税テーブル
 function getWeightTax(weight) {
     if (weight <= 0) return 0;
     if (weight <= 500) return 8200;
@@ -242,43 +264,29 @@ function getWeightTax(weight) {
     return 0;
 }
 
-// 自動車税（種別割）年額テーブル (東京都主税局基準)
+// 自動車税（種別割）年額テーブル
 function getCarTaxYearly(cc, isNewTaxRate) {
     if (cc <= 0) return 0;
-
     if (isNewTaxRate) {
-        // 令和元年10月1日以降に初回新規登録
-        if (cc <= 1.0) return 25000;
-        if (cc <= 1.5) return 30500;
-        if (cc <= 2.0) return 36000;
-        if (cc <= 2.5) return 43500;
-        if (cc <= 3.0) return 50000;
-        if (cc <= 3.5) return 57000;
-        if (cc <= 4.0) return 65500;
-        if (cc <= 4.5) return 75500;
-        if (cc <= 6.0) return 87000;
-        return 101000;
+        if (cc <= 1.0) return 25000; if (cc <= 1.5) return 30500;
+        if (cc <= 2.0) return 36000; if (cc <= 2.5) return 43500;
+        if (cc <= 3.0) return 50000; if (cc <= 3.5) return 57000;
+        if (cc <= 4.0) return 65500; if (cc <= 4.5) return 75500;
+        if (cc <= 6.0) return 87000; return 101000;
     } else {
-        // 令和元年9月30日以前に初回新規登録
-        if (cc <= 1.0) return 29500;
-        if (cc <= 1.5) return 34500;
-        if (cc <= 2.0) return 39500;
-        if (cc <= 2.5) return 45000;
-        if (cc <= 3.0) return 51000;
-        if (cc <= 3.5) return 58000;
-        if (cc <= 4.0) return 66500;
-        if (cc <= 4.5) return 76500;
-        if (cc <= 6.0) return 88000;
-        return 111000;
+        if (cc <= 1.0) return 29500; if (cc <= 1.5) return 34500;
+        if (cc <= 2.0) return 39500; if (cc <= 2.5) return 45000;
+        if (cc <= 3.0) return 51000; if (cc <= 3.5) return 58000;
+        if (cc <= 4.0) return 66500; if (cc <= 4.5) return 76500;
+        if (cc <= 6.0) return 88000; return 111000;
     }
 }
 
-// 月割り自動車税の計算ロジック
+// 月割り計算
 function getCarTaxMonthly(yearlyAmount, month) {
     if (!yearlyAmount || !month) return 0;
     let remainingMonths = 12 - month;
     if (remainingMonths <= 0) return 0;
-    
     const monthlyValue = (yearlyAmount * remainingMonths) / 12;
     return Math.floor(monthlyValue / 100) * 100;
 }
