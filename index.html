@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>車検証税額チェッカー β (全項目手動修正対応)</title>
+    <title>車検証税額チェッカー β (重課税・月割り修正版)</title>
     <!-- Tesseract.js（OCRライブラリ）の読み込み -->
     <script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
@@ -74,10 +74,12 @@
         <label for="modelInput">型式：</label> 
         <input type="text" id="modelInput" class="input-inline text-left" style="width: 180px;" placeholder="例: 3BA-NBOX"> <br>
 
-        <label for="taxRateSelect">税率区分(初度登録)：</label> 
-        <select id="taxRateSelect" class="input-inline text-left" style="width: 240px; display: inline-block; margin-top: 0;">
-            <option value="new">令和元年(2019年)10月以降 [新税率]</option>
-            <option value="old">令和元年(2019年)9月以前 [旧税率]</option>
+        <label for="taxRateSelect">税率・重課区分：</label> 
+        <select id="taxRateSelect" class="input-inline text-left" style="width: 300px; display: inline-block; margin-top: 0;">
+            <option value="new">2019年(令和元年)10月以降 [新税率・重課なし]</option>
+            <option value="normal">2013年〜2019年9月 [旧税率・重課なし]</option>
+            <option value="over13">2008年〜2012年 [13年経過・自動車税&重量税重課]</option>
+            <option value="over18">2007年(平成19年)以前 [18年経過・自動車税&重量税さらに重課]</option>
         </select>
         <span id="firstRegDisplay" style="font-size: 14px; color: #888; margin-left: 4px;"></span> <br>
         
@@ -90,7 +92,7 @@
         <button type="button" id="recalcBtn" class="btn-submit btn-recalc">修正して再計算</button>
         <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
         
-        <strong>重量税： <span id="weightTax">-</span></strong><br>
+        <strong>重量税(2年)： <span id="weightTax">-</span></strong><br>
         <strong>自動車税（種別割）年額： <span id="carTaxYearly">-</span></strong>
         
         <!-- 月割り金額の表示エリア -->
@@ -135,7 +137,7 @@ submitBtn.addEventListener("click", async function() {
             canvas.height = img.height;
             ctx.drawImage(img, 0, 0);
             
-            // 白黒化（二値化）処理
+            // 白黒化（二二値化）処理
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const data = imageData.data;
             for (let i = 0; i < data.length; i += 4) {
@@ -179,13 +181,13 @@ function parseData(text) {
     let firstReg = "";
     let weight = "";
     let ccValue = ""; 
-    let detectedIsNewTaxRate = true; // デフォルトは新税率
+    let detectedCategory = "new"; // デフォルトは新税率区分
     
     // 型式
     const modelMatch = clean.match(/(DBA|CBA|EBA|3BA|5BA)\s*-\s*[A-Z0-9]+/);
     if (modelMatch) model = modelMatch[0].replace(/\s+/g, "");
     
-    // 初度登録（新税率判定含む）
+    // 初度登録（重課税・新旧税率判定のために西暦へ換算）
     const regMatch = clean.match(/(平成|令和)\s*(\d+)\s*年\s*(\d+)\s*月/);
     if (regMatch) {
         firstReg = regMatch[0].replace(/\s+/g, "");
@@ -193,10 +195,22 @@ function parseData(text) {
         const year = parseInt(regMatch[2]);
         const month = parseInt(regMatch[3]);
         
+        let seirekiYear = 0;
         if (era === "平成") {
-            detectedIsNewTaxRate = false;
-        } else if (era === "令和" && year === 1 && month < 10) {
-            detectedIsNewTaxRate = false;
+            seirekiYear = 1988 + year;
+        } else if (era === "令和") {
+            seirekiYear = 2018 + year;
+        }
+
+        // 2026年現在の基準で重課・税率を4段階に自動ジャッジ
+        if (seirekiYear >= 2020 || (seirekiYear === 2019 && month >= 10)) {
+            detectedCategory = "new";
+        } else if (seirekiYear >= 2013) {
+            detectedCategory = "normal";
+        } else if (seirekiYear >= 2008) {
+            detectedCategory = "over13";
+        } else {
+            detectedCategory = "over18";
         }
     }
     
@@ -215,7 +229,7 @@ function parseData(text) {
     
     // 画面の各入力欄に値をセット
     document.getElementById("modelInput").value = model;
-    document.getElementById("taxRateSelect").value = detectedIsNewTaxRate ? "new" : "old";
+    document.getElementById("taxRateSelect").value = detectedCategory;
     document.getElementById("firstRegDisplay").innerText = firstReg ? `(解読: ${firstReg})` : "(解読不可)";
     document.getElementById("ccInput").value = ccValue;
     document.getElementById("weightInput").value = weight;
@@ -233,10 +247,10 @@ function calculateTaxes() {
     
     const cc = parseFloat(ccInputVal) || 0;
     const w = parseInt(weightInputVal) || 0;
-    const isNewTaxRate = (taxRateSelectVal === "new"); // セレクトボックスの状態から新旧税率を判定
 
-    const weightTaxAmount = getWeightTax(w);
-    currentYearlyTax = getCarTaxYearly(cc, isNewTaxRate);
+    // 分類に応じた重量税と自動車税を算出
+    const weightTaxAmount = getWeightTax(w, taxRateSelectVal);
+    currentYearlyTax = getCarTaxYearly(cc, taxRateSelectVal);
     
     document.getElementById("weightTax").innerText = weightTaxAmount > 0 ? weightTaxAmount.toLocaleString() + "円" : "-";
     document.getElementById("carTaxYearly").innerText = currentYearlyTax > 0 ? currentYearlyTax.toLocaleString() + "円" : "-";
@@ -244,7 +258,7 @@ function calculateTaxes() {
     updateMonthlyDisplay();
 }
 
-// 月割り表示の更新
+// 月割り表示の更新（バグ修正版）
 function updateMonthlyDisplay() {
     const selectEl = document.getElementById("monthSelect");
     const selectedMonth = parseInt(selectEl.value);
@@ -262,43 +276,60 @@ function updateMonthlyDisplay() {
     }
 }
 
-// 重量税テーブル
-function getWeightTax(weight) {
+// 重量税テーブル（重課対応版）
+function getWeightTax(weight, category) {
     if (weight <= 0) return 0;
-    if (weight <= 500) return 8200;
-    if (weight <= 1000) return 16400;
-    if (weight <= 1500) return 24600;
-    if (weight <= 2000) return 32800;
-    if (weight <= 2500) return 41000;
-    if (weight <= 3000) return 49200;
-    return 0;
+    
+    let basePricePerUnit = 8200; // 通常料金 (0.5トンあたり)
+    if (category === "over13") basePricePerUnit = 11400; // 13年経過重課
+    if (category === "over18") basePricePerUnit = 12600; // 18年経過重課
+    
+    const units = Math.ceil(weight / 500); // 0.5トンずつの区分数を算出
+    return basePricePerUnit * units;
 }
 
-// 自動車税（種別割）年額テーブル
-function getCarTaxYearly(cc, isNewTaxRate) {
+// 自動車税（種別割）年額テーブル（重課対応版）
+function getCarTaxYearly(cc, category) {
     if (cc <= 0) return 0;
-    if (isNewTaxRate) {
+    
+    if (category === "new") {
+        // 令和元年10月1日以降に初回新規登録
         if (cc <= 1.0) return 25000; if (cc <= 1.5) return 30500;
         if (cc <= 2.0) return 36000; if (cc <= 2.5) return 43500;
         if (cc <= 3.0) return 50000; if (cc <= 3.5) return 57000;
         if (cc <= 4.0) return 65500; if (cc <= 4.5) return 75500;
         if (cc <= 6.0) return 87000; return 101000;
-    } else {
+    } else if (category === "normal") {
+        // 令和元年9月30日以前（重課なし）
         if (cc <= 1.0) return 29500; if (cc <= 1.5) return 34500;
         if (cc <= 2.0) return 39500; if (cc <= 2.5) return 45000;
         if (cc <= 3.0) return 51000; if (cc <= 3.5) return 58000;
         if (cc <= 4.0) return 66500; if (cc <= 4.5) return 76500;
         if (cc <= 6.0) return 88000; return 111000;
+    } else {
+        // 13年・18年経過 ガソリン乗用車（概ね15%重課・100円未満切り捨て）
+        if (cc <= 1.0) return 33900; if (cc <= 1.5) return 39600;
+        if (cc <= 2.0) return 45400; if (cc <= 2.5) return 51700;
+        if (cc <= 3.0) return 58600; if (cc <= 3.5) return 66700;
+        if (cc <= 4.0) return 76400; if (cc <= 4.5) return 87900;
+        if (cc <= 6.0) return 101200; return 127600;
     }
 }
 
-// 月割り計算
+// 月割り計算（バグを修正：4月始まりの会計サイクルに準拠）
 function getCarTaxMonthly(yearlyAmount, month) {
     if (!yearlyAmount || !month) return 0;
-    let remainingMonths = 12 - month;
+    
+    let remainingMonths = 0;
+    if (month >= 4) {
+        remainingMonths = 15 - month;  // 例: 6月なら 15 - 6 = 9ヶ月分
+    } else {
+        remainingMonths = 3 - month;   // 例: 1月なら 3 - 1 = 2ヶ月分
+    }
+    
     if (remainingMonths <= 0) return 0;
     const monthlyValue = (yearlyAmount * remainingMonths) / 12;
-    return Math.floor(monthlyValue / 100) * 100;
+    return Math.floor(monthlyValue / 100) * 100; // 100円未満切り捨て
 }
 </script>
 </body>
