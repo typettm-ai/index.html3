@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>車検証税額チェッカー β (和暦表示版)</title>
+    <title>車検証税額チェッカー β</title>
     <!-- Tesseract.js（OCRライブラリ）の読み込み -->
     <script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
@@ -71,8 +71,8 @@
             ※読み取りが間違っている・空欄の場合は、各項目を直接書き換えて「修正して再計算」を押してください。
         </small>
 
-        <label for="modelInput">型式：</label> 
-        <input type="text" id="modelInput" class="input-inline text-left" style="width: 180px;" placeholder="例: 3BA-NBOX"> <br>
+        <label for="modelInput">型式（または頭の記号）：</label> 
+        <input type="text" id="modelInput" class="input-inline text-left" style="width: 200px;" placeholder="例: 3BA (空欄でも計算可)"> <br>
 
         <label for="taxRateSelect">初度登録年(重課区分)：</label> 
         <select id="taxRateSelect" class="input-inline text-left" style="width: 320px; display: inline-block; margin-top: 0;">
@@ -183,9 +183,15 @@ function parseData(text) {
     let ccValue = ""; 
     let detectedCategory = "new"; // デフォルトは新税率区分
     
-    // 型式
-    const modelMatch = clean.match(/(DBA|CBA|EBA|3BA|5BA)\s*-\s*[A-Z0-9]+/);
-    if (modelMatch) model = modelMatch[0].replace(/\s+/g, "");
+    // 型式（将来のエコカー減税判定用に見据えて復活）
+    const modelMatch = clean.match(/([A-Z0-9]{3,4})\s*-\s*[A-Z0-9]+/);
+    if (modelMatch) {
+        model = modelMatch[0].replace(/\s+/g, "");
+    } else {
+        // ハイフンが見つからない場合、3BAや6AAなどの単体キーワードを緩く探す
+        const shortMatch = clean.match(/\b(3BA|5BA|6AA|4AA|DBA|CBA)\b/);
+        if (shortMatch) model = shortMatch[0];
+    }
     
     // 初度登録（重課税・新旧税率判定のために西暦へ換算）
     const regMatch = clean.match(/(平成|令和)\s*(\d+)\s*年\s*(\d+)\s*月/);
