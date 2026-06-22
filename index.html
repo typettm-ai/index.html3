@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>車検証税額チェッカー β (手動修正対応)</title>
+    <title>車検証税額チェッカー β (全項目手動修正対応)</title>
     <!-- Tesseract.js（OCRライブラリ）の読み込み -->
     <script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
@@ -13,7 +13,9 @@
         input[type="file"], select {width: 100%; margin-top: 12px; box-sizing: border-box; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 6px; }
         
         /* 手動修正用の入力欄のスタイル */
-        .input-inline {width: 120px; padding: 8px; margin: 4px 8px 4px 0; font-size: 16px; border: 1px solid #ccc; border-radius: 6px; text-align: right;}
+        .input-inline {width: 120px; padding: 8px; margin: 4px 8px 4px 0; font-size: 16px; border: 1px solid #ccc; border-radius: 6px;}
+        .text-right { text-align: right; }
+        .text-left { text-align: left; }
         
         /* 実行ボタンのスタイル */
         .btn-submit {width: 100%; margin-top: 16px; padding: 14px; font-size: 18px; font-weight: bold; color: white; background-color: #0066cc; border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,.2); transition: background 0.2s; }
@@ -66,18 +68,24 @@
     <div class="card result">
         <h2>抽出結果と修正</h2>
         <small style="color: #666; display: block; margin-bottom: 12px; line-height: 1.4;">
-            ※読み取りが間違っている場合は、下の数値を直接書き換えて「修正して再計算」を押してください。
+            ※読み取りが間違っている・空欄の場合は、各項目を直接書き換えて「修正して再計算」を押してください。
         </small>
 
-        型式： <span id="model">-</span> <br>
-        初度登録： <span id="firstReg">-</span> <br>
+        <label for="modelInput">型式：</label> 
+        <input type="text" id="modelInput" class="input-inline text-left" style="width: 180px;" placeholder="例: 3BA-NBOX"> <br>
+
+        <label for="taxRateSelect">税率区分(初度登録)：</label> 
+        <select id="taxRateSelect" class="input-inline text-left" style="width: 240px; display: inline-block; margin-top: 0;">
+            <option value="new">令和元年(2019年)10月以降 [新税率]</option>
+            <option value="old">令和元年(2019年)9月以前 [旧税率]</option>
+        </select>
+        <span id="firstRegDisplay" style="font-size: 14px; color: #888; margin-left: 4px;"></span> <br>
         
-        <!-- 手動修正できるようにinputタグに変更 -->
         <label for="ccInput">総排気量：</label> 
-        <input type="number" step="0.01" id="ccInput" class="input-inline" placeholder="例: 1.49"> L <br>
+        <input type="number" step="0.01" id="ccInput" class="input-inline text-right" placeholder="例: 1.49"> L <br>
         
         <label for="weightInput">車両重量：</label> 
-        <input type="number" id="weightInput" class="input-inline" placeholder="例: 1250"> kg <br>
+        <input type="number" id="weightInput" class="input-inline text-right" placeholder="例: 1250"> kg <br>
 
         <button type="button" id="recalcBtn" class="btn-submit btn-recalc">修正して再計算</button>
         <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
@@ -100,7 +108,6 @@ const recalcBtn = document.getElementById("recalcBtn");
 
 let currentYearlyTax = 0; // 自動車税の年額
 let selectedFile = null;  // 選択ファイル
-let currentIsNewTaxRate = true; // 新税率かどうかのフラグ（再計算時に使用）
 
 // 画像選択
 document.getElementById("imageInput").addEventListener("change", function(e) {
@@ -156,7 +163,7 @@ submitBtn.addEventListener("click", async function() {
 // 再計算ボタンのイベント
 recalcBtn.addEventListener("click", function() {
     calculateTaxes();
-    statusEl.innerText = "手動入力された値で再計算しました。";
+    statusEl.innerText = "手動修正された値で再計算しました。";
 });
 
 // 月が変更された際のリアルタイム更新
@@ -168,11 +175,11 @@ document.getElementById("monthSelect").addEventListener("change", function() {
 function parseData(text) {
     const clean = text.replace(/[—ー－]/g, "-").replace(/\s+/g, " ").toUpperCase();
         
-    let model = "-";
-    let firstReg = "-";
+    let model = "";
+    let firstReg = "";
     let weight = "";
     let ccValue = ""; 
-    currentIsNewTaxRate = true; // デフォルトは新税率
+    let detectedIsNewTaxRate = true; // デフォルトは新税率
     
     // 型式
     const modelMatch = clean.match(/(DBA|CBA|EBA|3BA|5BA)\s*-\s*[A-Z0-9]+/);
@@ -187,9 +194,9 @@ function parseData(text) {
         const month = parseInt(regMatch[3]);
         
         if (era === "平成") {
-            currentIsNewTaxRate = false;
+            detectedIsNewTaxRate = false;
         } else if (era === "令和" && year === 1 && month < 10) {
-            currentIsNewTaxRate = false;
+            detectedIsNewTaxRate = false;
         }
     }
     
@@ -206,27 +213,30 @@ function parseData(text) {
     });
     if (tempWeight > 0) weight = tempWeight;
     
-    // 画面にセット
-    document.getElementById("model").innerText = model;
-    document.getElementById("firstReg").innerText = firstReg;
+    // 画面の各入力欄に値をセット
+    document.getElementById("modelInput").value = model;
+    document.getElementById("taxRateSelect").value = detectedIsNewTaxRate ? "new" : "old";
+    document.getElementById("firstRegDisplay").innerText = firstReg ? `(解読: ${firstReg})` : "(解読不可)";
     document.getElementById("ccInput").value = ccValue;
     document.getElementById("weightInput").value = weight;
     
     // 計算実行
     calculateTaxes();
-    statusEl.innerText = "読み取り完了（間違っている場合は数値を修正してください）";
+    statusEl.innerText = "読み取り完了（間違っている部分は修正してください）";
 }
 
 // フォームの数値から税金を計算して表示する
 function calculateTaxes() {
     const ccInputVal = document.getElementById("ccInput").value;
     const weightInputVal = document.getElementById("weightInput").value;
+    const taxRateSelectVal = document.getElementById("taxRateSelect").value;
     
     const cc = parseFloat(ccInputVal) || 0;
     const w = parseInt(weightInputVal) || 0;
+    const isNewTaxRate = (taxRateSelectVal === "new"); // セレクトボックスの状態から新旧税率を判定
 
     const weightTaxAmount = getWeightTax(w);
-    currentYearlyTax = getCarTaxYearly(cc, currentIsNewTaxRate);
+    currentYearlyTax = getCarTaxYearly(cc, isNewTaxRate);
     
     document.getElementById("weightTax").innerText = weightTaxAmount > 0 ? weightTaxAmount.toLocaleString() + "円" : "-";
     document.getElementById("carTaxYearly").innerText = currentYearlyTax > 0 ? currentYearlyTax.toLocaleString() + "円" : "-";
