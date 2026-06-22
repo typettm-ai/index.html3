@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>車検証税額チェッカー β (重課税・月割り修正版)</title>
+    <title>車検証税額チェッカー β (和暦表示版)</title>
     <!-- Tesseract.js（OCRライブラリ）の読み込み -->
     <script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
@@ -74,12 +74,12 @@
         <label for="modelInput">型式：</label> 
         <input type="text" id="modelInput" class="input-inline text-left" style="width: 180px;" placeholder="例: 3BA-NBOX"> <br>
 
-        <label for="taxRateSelect">税率・重課区分：</label> 
-        <select id="taxRateSelect" class="input-inline text-left" style="width: 300px; display: inline-block; margin-top: 0;">
-            <option value="new">2019年(令和元年)10月以降 [新税率・重課なし]</option>
-            <option value="normal">2013年〜2019年9月 [旧税率・重課なし]</option>
-            <option value="over13">2008年〜2012年 [13年経過・自動車税&重量税重課]</option>
-            <option value="over18">2007年(平成19年)以前 [18年経過・自動車税&重量税さらに重課]</option>
+        <label for="taxRateSelect">初度登録年(重課区分)：</label> 
+        <select id="taxRateSelect" class="input-inline text-left" style="width: 320px; display: inline-block; margin-top: 0;">
+            <option value="new">令和元年10月 以降 ［新税率］</option>
+            <option value="normal">平成25年 〜 令和元年9月 ［旧税率］</option>
+            <option value="over13">平成20年 〜 平成24年 ［13年経過重課］</option>
+            <option value="over18">平成19年 以前 ［18年経過さらに重課］</option>
         </select>
         <span id="firstRegDisplay" style="font-size: 14px; color: #888; margin-left: 4px;"></span> <br>
         
@@ -137,7 +137,7 @@ submitBtn.addEventListener("click", async function() {
             canvas.height = img.height;
             ctx.drawImage(img, 0, 0);
             
-            // 白黒化（二二値化）処理
+            // 白黒化（二値化）処理
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const data = imageData.data;
             for (let i = 0; i < data.length; i += 4) {
@@ -258,7 +258,7 @@ function calculateTaxes() {
     updateMonthlyDisplay();
 }
 
-// 月割り表示の更新（バグ修正版）
+// 月割り表示の更新
 function updateMonthlyDisplay() {
     const selectEl = document.getElementById("monthSelect");
     const selectedMonth = parseInt(selectEl.value);
@@ -316,7 +316,7 @@ function getCarTaxYearly(cc, category) {
     }
 }
 
-// 月割り計算（バグを修正：4月始まりの会計サイクルに準拠）
+// 月割り計算（4月始まりのサイクル）
 function getCarTaxMonthly(yearlyAmount, month) {
     if (!yearlyAmount || !month) return 0;
     
