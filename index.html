@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>車検証税額チェッカー β (型式自動判別版)</title>
+    <title>車検証税額チェッカー β (エコカーW免除連動版)</title>
     <!-- Tesseract.js（OCRライブラリ）の読み込み -->
     <script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
@@ -81,7 +81,7 @@
         </small>
 
         <label for="modelInput">型式（または頭の記号）：</label> 
-        <input type="text" id="modelInput" class="input-inline text-left" style="width: 200px;" placeholder="例: 3BA (空欄可)"> <br>
+        <input type="text" id="modelInput" class="input-inline text-left" style="width: 200px;" placeholder="例: 6AA (空欄可)"> <br>
 
         <label for="taxRateSelect">初度登録年(自動車税区分)：</label> 
         <select id="taxRateSelect" class="input-inline text-left" style="width: 320px; display: inline-block; margin-top: 0;">
@@ -225,14 +225,40 @@ submitBtn.addEventListener("click", async function() {
     img.src = URL.createObjectURL(selectedFile);
 });
 
+// 再計算ボタンのイベント
 recalcBtn.addEventListener("click", function() {
+    // 手動で型式が書き換えられた可能性を考慮して、計算前にエコカー判定を走らせる
+    autoAdjustEcoCarCategory();
     calculateTaxes();
-    statusEl.innerText = "手動修正された値で再計算しました。";
+    statusEl.innerText = "値を確認し、再計算しました。";
 });
 
 document.getElementById("monthSelect").addEventListener("change", function() {
     updateMonthlyDisplay();
 });
+
+/**
+ * ★【新設】型式の頭3桁からエコカー（重量税＆自動車税の重課免除）を自動判別してセレクトボックスを補正する共通ロジック
+ */
+function autoAdjustEcoCarCategory() {
+    const model = document.getElementById("modelInput").value.toUpperCase();
+    const cleanModel = model.replace(/[^A-Z0-9]/g, ""); // 記号を除去
+    const modelHead = cleanModel.slice(0, 3);          // 頭3桁を取得
+    
+    // エコカーを指す代表的な識別記号群（ハイブリッド、EV、クリーンディーゼル等）
+    const ecoPrefixes = ["6AA", "4AA", "5AA", "3AA", "DAA", "CAA", "ZAA"];
+    
+    if (ecoPrefixes.includes(modelHead)) {
+        // エコカー記号を検知した場合
+        document.getElementById("weightTaxCategorySelect").value = "eco"; // 重量税をエコカーへ
+        
+        // 自動車税の区分が「重課（over13 / over18）」になっていた場合、重課を免除して「標準（旧税率）」へ引き下げる
+        const currentCarTax = document.getElementById("taxRateSelect").value;
+        if (currentCarTax === "over13" || currentCarTax === "over18") {
+            document.getElementById("taxRateSelect").value = "normal"; 
+        }
+    }
+}
 
 // OCRのテキストを解析してフォームにセットする
 function parseData(text) {
@@ -296,24 +322,18 @@ function parseData(text) {
         if (weightsFound.length >= 3) maxLoad = weightsFound[1];
     }
     
-    // 画面の各入力欄に値をセット
+    // 画面の各入力欄にベース値をセット
     document.getElementById("modelInput").value = model;
     document.getElementById("taxRateSelect").value = detectedCategory;
     
-    // ーーー ★【追加】型式の頭3桁によるエコカーの自動判別ロジック ーーー
-    const modelHead = model.slice(0, 3);
-    // エコカー（ハイブリッド、EV、一部クリーンディーゼルなど）を指す代表的な識別記号群
-    const ecoPrefixes = ["6AA", "4AA", "5AA", "3AA", "DAA", "CAA", "ZAA"];
-    
-    if (ecoPrefixes.includes(modelHead)) {
-        // エコカー記号にヒットした場合は「エコカー」を自動選択
-        document.getElementById("weightTaxCategorySelect").value = "eco";
-    } else if (detectedCategory === "over13" || detectedCategory === "over18") {
+    if (detectedCategory === "over13" || detectedCategory === "over18") {
         document.getElementById("weightTaxCategorySelect").value = detectedCategory;
     } else {
         document.getElementById("weightTaxCategorySelect").value = "standard";
     }
-    // ーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーー
+
+    // ★読み取り直後にエコカー自動連動ロジックを走らせてセレクトボックスを上書き補正
+    autoAdjustEcoCarCategory();
 
     document.getElementById("firstRegDisplay").innerText = firstReg ? `(解読: ${firstReg})` : "(解読不可)";
     document.getElementById("ccInput").value = ccValue;
