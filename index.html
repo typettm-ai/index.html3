@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>車検証税額チェッカー β (エコカーW免除連動版)</title>
+    <title>車検証税額チェッカー β (スマート自動判別版)</title>
     <!-- Tesseract.js（OCRライブラリ）の読み込み -->
     <script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
@@ -21,15 +21,12 @@
         .btn-submit {width: 100%; margin-top: 16px; padding: 14px; font-size: 18px; font-weight: bold; color: white; background-color: #0066cc; border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,.2); transition: background 0.2s; }
         .btn-submit:hover {background-color: #0052a3; }
         .btn-submit:disabled {background-color: #cccccc; cursor: not-allowed; box-shadow: none; }
-        
-        /* 再計算ボタンのスタイル */
-        .btn-recalc {background-color: #28a745; margin-top: 12px;}
-        .btn-recalc:hover {background-color: #218838; }
 
         .result {font-size: 18px; line-height: 2; }
         .status {font-weight: bold; color: #333; }
         .monthly-box {background: #f0f7ff; border-left: 4px solid #0066cc; padding: 12px; margin-top: 12px; font-size: 16px; border-radius: 0 8px 8px 0; line-height: 1.6; }
         .select-container {margin-top: 8px; margin-bottom: 8px; }
+        .badge-eco { background: #e6f4ea; color: #137333; padding: 2px 8px; border-radius: 4px; font-size: 14px; font-weight: bold; display: inline-block; margin-left: 8px; }
     </style>
 </head>
 <body>
@@ -75,13 +72,14 @@
 
     <!-- 抽出された結果と税額を表示 -->
     <div class="card result">
-        <h2>抽出結果と修正</h2>
+        <h2>抽出結果（手動修正も可能）</h2>
         <small style="color: #666; display: block; margin-bottom: 12px; line-height: 1.4;">
-            ※読み取りが間違っている・空欄の場合は、各項目を直接書き換えて「修正して再計算」を押してください。
+            ※値を変更すると、税額へリアルタイムに自動反映されます。
         </small>
 
-        <label for="modelInput">型式（または頭の記号）：</label> 
-        <input type="text" id="modelInput" class="input-inline text-left" style="width: 200px;" placeholder="例: 6AA (空欄可)"> <br>
+        <label for="modelInput">型式（頭の3桁）：</label> 
+        <input type="text" id="modelInput" class="input-inline text-left" style="width: 150px;" placeholder="例: 6AA"> 
+        <span id="ecoBadgeArea"></span><br>
 
         <label for="taxRateSelect">初度登録年(自動車税区分)：</label> 
         <select id="taxRateSelect" class="input-inline text-left" style="width: 320px; display: inline-block; margin-top: 0;">
@@ -91,15 +89,6 @@
             <option value="over18">平成19年 以前 ［18年経過さらに重課］</option>
         </select>
         <span id="firstRegDisplay" style="font-size: 14px; color: #888; margin-left: 4px;"></span> <br>
-
-        <!-- 重量税専用区分 -->
-        <label for="weightTaxCategorySelect">重量税の区分(エコカー・重課)：</label> 
-        <select id="weightTaxCategorySelect" class="input-inline text-left" style="width: 320px; display: inline-block; margin-top: 0;">
-            <option value="eco">エコカー ［本則税率］</option>
-            <option value="standard" selected>非エコカー ［13年未満標準］</option>
-            <option value="over13">13年経過重課 ［旧税率より増税］</option>
-            <option value="over18">18年経過重課 ［さらに増税］</option>
-        </select> <br>
 
         <!-- 支払年数 -->
         <label for="weightTaxTermSelect">重量税の支払年数：</label> 
@@ -127,7 +116,6 @@
             <input type="number" id="totalWeightInput" class="input-inline text-right" placeholder="例: 4450"> kg <br>
         </div>
 
-        <button type="button" id="recalcBtn" class="btn-submit btn-recalc">修正して再計算</button>
         <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
         
         <strong>重量税(<span id="weightTaxTermLabel">2</span>年分)： <span id="weightTax">-</span></strong><br>
@@ -144,7 +132,6 @@
 <script>
 const statusEl = document.getElementById("status");
 const submitBtn = document.getElementById("submitBtn");
-const recalcBtn = document.getElementById("recalcBtn");
 const carTypeSelect = document.getElementById("carTypeSelect");
 
 const passengerInputFields = document.getElementById("passengerInputFields");
@@ -155,6 +142,16 @@ const monthlyNotice = document.getElementById("monthlyNotice");
 
 let currentYearlyTax = 0; 
 let selectedFile = null;  
+
+// エコカーを指す代表的な識別記号群（ハイブリッド、EV、クリーンディーゼル等）
+const ecoPrefixes = ["6AA", "4AA", "5AA", "3AA", "DAA", "CAA", "ZAA"];
+
+// 入力内容が変わったらリアルタイムに再計算するイベントを設定
+const inputs = ["modelInput", "taxRateSelect", "weightTaxTermSelect", "ccInput", "weightInput", "maxLoadInput", "totalWeightInput", "monthSelect"];
+inputs.forEach(id => {
+    document.getElementById(id).addEventListener("input", calculateTaxes);
+    document.getElementById(id).addEventListener("change", calculateTaxes);
+});
 
 // 車種切り替え時のUI制御
 carTypeSelect.addEventListener("change", function() {
@@ -169,10 +166,6 @@ carTypeSelect.addEventListener("change", function() {
         weightTaxTermSelect.value = "1"; 
         monthlyNotice.innerText = "※貨物車も乗用車と同様、登録月の翌月から3月までの残り月数で計算します（100円未満切り捨て）。";
     }
-    calculateTaxes();
-});
-
-weightTaxTermSelect.addEventListener("change", function() {
     calculateTaxes();
 });
 
@@ -224,41 +217,6 @@ submitBtn.addEventListener("click", async function() {
     };
     img.src = URL.createObjectURL(selectedFile);
 });
-
-// 再計算ボタンのイベント
-recalcBtn.addEventListener("click", function() {
-    // 手動で型式が書き換えられた可能性を考慮して、計算前にエコカー判定を走らせる
-    autoAdjustEcoCarCategory();
-    calculateTaxes();
-    statusEl.innerText = "値を確認し、再計算しました。";
-});
-
-document.getElementById("monthSelect").addEventListener("change", function() {
-    updateMonthlyDisplay();
-});
-
-/**
- * ★【新設】型式の頭3桁からエコカー（重量税＆自動車税の重課免除）を自動判別してセレクトボックスを補正する共通ロジック
- */
-function autoAdjustEcoCarCategory() {
-    const model = document.getElementById("modelInput").value.toUpperCase();
-    const cleanModel = model.replace(/[^A-Z0-9]/g, ""); // 記号を除去
-    const modelHead = cleanModel.slice(0, 3);          // 頭3桁を取得
-    
-    // エコカーを指す代表的な識別記号群（ハイブリッド、EV、クリーンディーゼル等）
-    const ecoPrefixes = ["6AA", "4AA", "5AA", "3AA", "DAA", "CAA", "ZAA"];
-    
-    if (ecoPrefixes.includes(modelHead)) {
-        // エコカー記号を検知した場合
-        document.getElementById("weightTaxCategorySelect").value = "eco"; // 重量税をエコカーへ
-        
-        // 自動車税の区分が「重課（over13 / over18）」になっていた場合、重課を免除して「標準（旧税率）」へ引き下げる
-        const currentCarTax = document.getElementById("taxRateSelect").value;
-        if (currentCarTax === "over13" || currentCarTax === "over18") {
-            document.getElementById("taxRateSelect").value = "normal"; 
-        }
-    }
-}
 
 // OCRのテキストを解析してフォームにセットする
 function parseData(text) {
@@ -325,15 +283,6 @@ function parseData(text) {
     // 画面の各入力欄にベース値をセット
     document.getElementById("modelInput").value = model;
     document.getElementById("taxRateSelect").value = detectedCategory;
-    
-    if (detectedCategory === "over13" || detectedCategory === "over18") {
-        document.getElementById("weightTaxCategorySelect").value = detectedCategory;
-    } else {
-        document.getElementById("weightTaxCategorySelect").value = "standard";
-    }
-
-    // ★読み取り直後にエコカー自動連動ロジックを走らせてセレクトボックスを上書き補正
-    autoAdjustEcoCarCategory();
 
     document.getElementById("firstRegDisplay").innerText = firstReg ? `(解読: ${firstReg})` : "(解読不可)";
     document.getElementById("ccInput").value = ccValue;
@@ -342,18 +291,45 @@ function parseData(text) {
     document.getElementById("totalWeightInput").value = totalWeight;
     
     calculateTaxes();
-    statusEl.innerText = "読み取り完了（間違っている部分は修正してください）";
+    statusEl.innerText = "読み取り完了";
 }
 
 // フォームの数値から税金を計算して表示する
 function calculateTaxes() {
     const isCargo = (carTypeSelect.value === "cargo");
-    const carTaxCategory = document.getElementById("taxRateSelect").value;
-    const weightTaxCategory = document.getElementById("weightTaxCategorySelect").value;
     const term = parseInt(weightTaxTermSelect.value) || 2;
     
+    // 型式の頭3桁を取得
+    const modelRaw = document.getElementById("modelInput").value.toUpperCase();
+    const cleanModel = modelRaw.replace(/[^A-Z0-9]/g, ""); 
+    const modelHead = cleanModel.slice(0, 3);
+    
+    // 現在選択されている初度登録年(自動車税の基本区分)
+    let carTaxCategory = document.getElementById("taxRateSelect").value;
+    let weightTaxCategory = "standard"; // デフォルトは13年未満標準
+    
+    // ★★★ エコカー優先・重課税免除の自動裏連動ロジック ★★★
+    if (ecoPrefixes.includes(modelHead)) {
+        // エコカーに該当する場合：
+        weightTaxCategory = "eco"; // 重量税を強制的に「エコカー」にする
+        document.getElementById("ecoBadgeArea").innerHTML = '<span class="badge-eco">エコカー判定</span>';
+        
+        // 自動車税が13年・18年重課になっていた場合、重課を免除して「標準(旧税率)」に引き下げる
+        if (carTaxCategory === "over13" || carTaxCategory === "over18") {
+            carTaxCategory = "normal"; 
+        }
+    } else {
+        document.getElementById("ecoBadgeArea").innerHTML = '';
+        // エコカーでない場合は、選択された初度登録年に合わせて重量税の重課を決める
+        if (carTaxCategory === "over13") {
+            weightTaxCategory = "over13";
+        } else if (carTaxCategory === "over18") {
+            weightTaxCategory = "over18";
+        }
+    }
+    // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+    
     weightTaxTermLabel.innerText = term;
-
     let weightTaxAmount = 0;
     currentYearlyTax = 0;
 
