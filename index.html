@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>車検証税額チェッカー β (スマート自動判別版)</title>
+    <title>車検証税額チェッカー β (ディーゼル・エコカー完全自動判別版)</title>
     <!-- Tesseract.js（OCRライブラリ）の読み込み -->
     <script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
@@ -26,7 +26,10 @@
         .status {font-weight: bold; color: #333; }
         .monthly-box {background: #f0f7ff; border-left: 4px solid #0066cc; padding: 12px; margin-top: 12px; font-size: 16px; border-radius: 0 8px 8px 0; line-height: 1.6; }
         .select-container {margin-top: 8px; margin-bottom: 8px; }
+        
+        /* 状態表示バッジ */
         .badge-eco { background: #e6f4ea; color: #137333; padding: 2px 8px; border-radius: 4px; font-size: 14px; font-weight: bold; display: inline-block; margin-left: 8px; }
+        .badge-diesel { background: #fff3cd; color: #856404; padding: 2px 8px; border-radius: 4px; font-size: 14px; font-weight: bold; display: inline-block; margin-left: 8px; }
     </style>
 </head>
 <body>
@@ -78,13 +81,14 @@
         </small>
 
         <label for="modelInput">型式（頭の3桁）：</label> 
-        <input type="text" id="modelInput" class="input-inline text-left" style="width: 150px;" placeholder="例: 6AA"> 
-        <span id="ecoBadgeArea"></span><br>
+        <input type="text" id="modelInput" class="input-inline text-left" style="width: 150px;" placeholder="例: 3DA"> 
+        <span id="badgeArea"></span><br>
 
         <label for="taxRateSelect">初度登録年(自動車税区分)：</label> 
-        <select id="taxRateSelect" class="input-inline text-left" style="width: 320px; display: inline-block; margin-top: 0;">
+        <select id="taxRateSelect" class="input-inline text-left" style="width: 360px; display: inline-block; margin-top: 0;">
             <option value="new">令和元年10月 以降 ［新税率］</option>
-            <option value="normal">平成25年 〜 令和元年9月 ［旧税率］</option>
+            <option value="normal">平成28年 〜 令和元年9月 ［標準（11年未満）］</option>
+            <option value="over11">平成25年 〜 平成27年 ［11年経過（ディーゼル重課）］</option>
             <option value="over13">平成20年 〜 平成24年 ［13年経過重課］</option>
             <option value="over18">平成19年 以前 ［18年経過さらに重課］</option>
         </select>
@@ -101,10 +105,10 @@
         <!-- 乗用車用に入力欄 -->
         <div id="passengerInputFields">
             <label for="ccInput">総排気量：</label> 
-            <input type="number" step="0.01" id="ccInput" class="input-inline text-right" placeholder="例: 1.49"> L <br>
+            <input type="number" step="0.01" id="ccInput" class="input-inline text-right" placeholder="例: 1.99"> L <br>
             
             <label for="weightInput">車両重量：</label> 
-            <input type="number" id="weightInput" class="input-inline text-right" placeholder="例: 1250"> kg <br>
+            <input type="number" id="weightInput" class="input-inline text-right" placeholder="例: 1600"> kg <br>
         </div>
 
         <!-- 貨物車用に入力欄 -->
@@ -143,28 +147,27 @@ const monthlyNotice = document.getElementById("monthlyNotice");
 let currentYearlyTax = 0; 
 let selectedFile = null;  
 
-// エコカーを指す代表的な識別記号群（ハイブリッド、EV、クリーンディーゼル等）
+// 識別記号グループの定義
 const ecoPrefixes = ["6AA", "4AA", "5AA", "3AA", "DAA", "CAA", "ZAA"];
+const dieselPrefixes = ["3DA", "1DA", "QDF", "3DF", "LDA", "LDF", "ADF", "BDF", "CDA", "FDA", "SDA"];
 
-// 入力内容が変わったらリアルタイムに再計算するイベントを設定
+// リアルタイム再計算の紐付け
 const inputs = ["modelInput", "taxRateSelect", "weightTaxTermSelect", "ccInput", "weightInput", "maxLoadInput", "totalWeightInput", "monthSelect"];
 inputs.forEach(id => {
     document.getElementById(id).addEventListener("input", calculateTaxes);
     document.getElementById(id).addEventListener("change", calculateTaxes);
 });
 
-// 車種切り替え時のUI制御
+// 車種切り替え
 carTypeSelect.addEventListener("change", function() {
     if (this.value === "passenger") {
         passengerInputFields.style.display = "block";
         cargoInputFields.style.display = "none";
         weightTaxTermSelect.value = "2"; 
-        monthlyNotice.innerText = "※普通車は登録月の翌月から3月までの残り月数で計算します（100円未満切り捨て）。";
     } else {
         passengerInputFields.style.display = "none";
         cargoInputFields.style.display = "block";
         weightTaxTermSelect.value = "1"; 
-        monthlyNotice.innerText = "※貨物車も乗用車と同様、登録月の翌月から3月までの残り月数で計算します（100円未満切り捨て）。";
     }
     calculateTaxes();
 });
@@ -193,7 +196,6 @@ submitBtn.addEventListener("click", async function() {
             canvas.height = img.height;
             ctx.drawImage(img, 0, 0);
             
-            // 白黒化処理
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const data = imageData.data;
             for (let i = 0; i < data.length; i += 4) {
@@ -203,14 +205,13 @@ submitBtn.addEventListener("click", async function() {
             }
             ctx.putImageData(imageData, 0, 0);
             
-            statusEl.innerText = "OCR実行中（文字を解析しています）...";
-            
+            statusEl.innerText = "OCR実行中...";
             const result = await Tesseract.recognize(canvas, "jpn+eng");
             parseData(result.data.text);
             
         } catch (err) {
             console.error(err);
-            statusEl.innerText = "エラーが発生しました。別の画像で試してください。";
+            statusEl.innerText = "エラーが発生しました。";
         } finally {
             submitBtn.disabled = false;
         }
@@ -218,10 +219,8 @@ submitBtn.addEventListener("click", async function() {
     img.src = URL.createObjectURL(selectedFile);
 });
 
-// OCRのテキストを解析してフォームにセットする
 function parseData(text) {
     const clean = text.replace(/[—ー－]/g, "-").replace(/\s+/g, " ").toUpperCase();
-        
     let model = "";
     let firstReg = "";
     let weight = "";
@@ -230,16 +229,14 @@ function parseData(text) {
     let ccValue = ""; 
     let detectedCategory = "new"; 
     
-    // 型式抽出
     const modelMatch = clean.match(/([A-Z0-9]{3,4})\s*-\s*[A-Z0-9]+/);
     if (modelMatch) {
         model = modelMatch[0].replace(/\s+/g, "");
     } else {
-        const shortMatch = clean.match(/\b(3BA|5BA|6AA|4AA|DBA|CBA|ZAA)\b/);
+        const shortMatch = clean.match(/\b(3BA|5BA|6AA|4AA|3DA|LDA|QDF|ZAA)\b/);
         if (shortMatch) model = shortMatch[0];
     }
     
-    // 初度登録
     const regMatch = clean.match(/(平成|令和)\s*(\d+)\s*年\s*(\d+)\s*月/);
     if (regMatch) {
         firstReg = regMatch[0].replace(/\s+/g, "");
@@ -247,32 +244,27 @@ function parseData(text) {
         const year = parseInt(regMatch[2]);
         const month = parseInt(regMatch[3]);
         
-        let seirekiYear = 0;
-        if (era === "平成") {
-            seirekiYear = 1988 + year;
-        } else if (era === "令和") {
-            seirekiYear = 2018 + year;
-        }
+        let seirekiYear = (era === "平成") ? (1988 + year) : (2018 + year);
 
+        // 2026年時点を基準とした初度登録の自動振り分け
         if (seirekiYear >= 2020 || (seirekiYear === 2019 && month >= 10)) {
             detectedCategory = "new";
-        } else if (seirekiYear >= 2013) {
+        } else if (seirekiYear >= 2016 || (seirekiYear === 2019 && month < 10)) {
             detectedCategory = "normal";
-        } else if (seirekiYear >= 2008) {
-            detectedCategory = "over13";
+        } else if (seirekiYear >= 2013 && seirekiYear <= 2015) {
+            detectedCategory = "over11"; // 11年〜13年経過
+        } else if (seirekiYear >= 2008 && seirekiYear <= 2012) {
+            detectedCategory = "over13"; // 13年〜18年経過
         } else {
-            detectedCategory = "over18";
+            detectedCategory = "over18"; // 18年経過
         }
     }
     
-    // 総排気量
     const ccMatch = clean.match(/(\d+\.\d+)\s*L/);
     if (ccMatch) ccValue = parseFloat(ccMatch[1]);
 
-    // 重量・積載量関連の数値
     const nums = clean.match(/\d{3,5}/g) || [];
     let weightsFound = nums.map(n => parseInt(n)).filter(v => v >= 350 && v <= 15000);
-    
     if (weightsFound.length > 0) {
         weightsFound.sort((a, b) => a - b);
         weight = weightsFound[0] || "";
@@ -280,10 +272,8 @@ function parseData(text) {
         if (weightsFound.length >= 3) maxLoad = weightsFound[1];
     }
     
-    // 画面の各入力欄にベース値をセット
     document.getElementById("modelInput").value = model;
     document.getElementById("taxRateSelect").value = detectedCategory;
-
     document.getElementById("firstRegDisplay").innerText = firstReg ? `(解読: ${firstReg})` : "(解読不可)";
     document.getElementById("ccInput").value = ccValue;
     document.getElementById("weightInput").value = weight;
@@ -294,40 +284,56 @@ function parseData(text) {
     statusEl.innerText = "読み取り完了";
 }
 
-// フォームの数値から税金を計算して表示する
+// コア計算・裏連動ロジック
 function calculateTaxes() {
     const isCargo = (carTypeSelect.value === "cargo");
     const term = parseInt(weightTaxTermSelect.value) || 2;
     
-    // 型式の頭3桁を取得
     const modelRaw = document.getElementById("modelInput").value.toUpperCase();
     const cleanModel = modelRaw.replace(/[^A-Z0-9]/g, ""); 
     const modelHead = cleanModel.slice(0, 3);
     
-    // 現在選択されている初度登録年(自動車税の基本区分)
     let carTaxCategory = document.getElementById("taxRateSelect").value;
-    let weightTaxCategory = "standard"; // デフォルトは13年未満標準
+    let weightTaxCategory = "standard"; 
     
-    // ★★★ エコカー優先・重課税免除の自動裏連動ロジック ★★★
-    if (ecoPrefixes.includes(modelHead)) {
-        // エコカーに該当する場合：
-        weightTaxCategory = "eco"; // 重量税を強制的に「エコカー」にする
-        document.getElementById("ecoBadgeArea").innerHTML = '<span class="badge-eco">エコカー判定</span>';
+    const isEco = ecoPrefixes.includes(modelHead);
+    const isDiesel = dieselPrefixes.includes(modelHead);
+    
+    // ★★★ エコカー vs ディーゼル vs ガソリン車の優先度判定ロジック ★★★
+    if (isEco) {
+        // 1. エコカーが最優先（重課はすべて完全免除）
+        weightTaxCategory = "eco";
+        document.getElementById("badgeArea").innerHTML = '<span class="badge-eco">エコカー判定（重課免除）</span>';
+        if (carTaxCategory === "over11" || carTaxCategory === "over13" || carTaxCategory === "over18") {
+            carTaxCategory = "normal"; // 自動車税を通常税率へ
+        }
+    } else if (isDiesel) {
+        // 2. ディーゼル車の場合
+        document.getElementById("badgeArea").innerHTML = '<span class="badge-diesel">ディーゼル車判定</span>';
         
-        // 自動車税が13年・18年重課になっていた場合、重課を免除して「標準(旧税率)」に引き下げる
-        if (carTaxCategory === "over13" || carTaxCategory === "over18") {
-            carTaxCategory = "normal"; 
+        if (carTaxCategory === "over11") {
+            // 【要望通り】11年経過時は「自動車税だけ重課」、重量税は「標準(重課なし)」
+            weightTaxCategory = "standard"; 
+        } else if (carTaxCategory === "over13") {
+            weightTaxCategory = "over13";
+        } else if (carTaxCategory === "over18") {
+            weightTaxCategory = "over18";
         }
     } else {
-        document.getElementById("ecoBadgeArea").innerHTML = '';
-        // エコカーでない場合は、選択された初度登録年に合わせて重量税の重課を決める
-        if (carTaxCategory === "over13") {
+        // 3. 通常のガソリン車等の場合
+        document.getElementById("badgeArea").innerHTML = '';
+        
+        if (carTaxCategory === "over11") {
+            // ガソリン車は11年では重課されないため、自動車税を「標準」として扱う
+            carTaxCategory = "normal";
+            weightTaxCategory = "standard";
+        } else if (carTaxCategory === "over13") {
             weightTaxCategory = "over13";
         } else if (carTaxCategory === "over18") {
             weightTaxCategory = "over18";
         }
     }
-    // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+    // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
     
     weightTaxTermLabel.innerText = term;
     let weightTaxAmount = 0;
@@ -336,13 +342,11 @@ function calculateTaxes() {
     if (!isCargo) {
         const cc = parseFloat(document.getElementById("ccInput").value) || 0;
         const w = parseInt(document.getElementById("weightInput").value) || 0;
-        
         weightTaxAmount = getWeightTaxPassenger(w, weightTaxCategory, term);
         currentYearlyTax = getCarTaxYearlyPassenger(cc, carTaxCategory);
     } else {
         const maxLoad = parseInt(document.getElementById("maxLoadInput").value) || 0;
         const totalWeight = parseInt(document.getElementById("totalWeightInput").value) || 0;
-        
         weightTaxAmount = getWeightTaxCargo(totalWeight, weightTaxCategory, term);
         currentYearlyTax = getCarTaxYearlyCargo(maxLoad, carTaxCategory);
     }
@@ -377,8 +381,7 @@ function getWeightTaxPassenger(weight, category, term) {
     if (category === "eco") pricePerUnitPerYear = 2500;       
     if (category === "over13") pricePerUnitPerYear = 5700;    
     if (category === "over18") pricePerUnitPerYear = 6300;    
-    const units = Math.ceil(weight / 500); 
-    return pricePerUnitPerYear * units * term;
+    return pricePerUnitPerYear * Math.ceil(weight / 500) * term;
 }
 
 // 重量税：貨物車
@@ -388,8 +391,7 @@ function getWeightTaxCargo(totalWeight, category, term) {
     if (category === "eco") pricePerTonPerYear = 2500;       
     if (category === "over13") pricePerTonPerYear = 5400;    
     if (category === "over18") pricePerTonPerYear = 5700;    
-    const units = Math.ceil(totalWeight / 1000); 
-    return pricePerTonPerYear * units * term;
+    return pricePerTonPerYear * Math.ceil(totalWeight / 1000) * term;
 }
 
 // 自動車税：乗用車
@@ -407,7 +409,7 @@ function getCarTaxYearlyPassenger(cc, category) {
         if (cc <= 3.0) return 51000; if (cc <= 3.5) return 58000;
         if (cc <= 4.0) return 66500; if (cc <= 4.5) return 76500;
         if (cc <= 6.0) return 88000; return 111000;
-    } else {
+    } else { // over11, over13, over18 の重課
         if (cc <= 1.0) return 33900; if (cc <= 1.5) return 39600;
         if (cc <= 2.0) return 45400; if (cc <= 2.5) return 51700;
         if (cc <= 3.0) return 58600; if (cc <= 3.5) return 66700;
@@ -428,11 +430,9 @@ function getCarTaxYearlyCargo(maxLoad, category) {
     else if (maxLoad <= 6000) baseTax = 30000;
     else if (maxLoad <= 7000) baseTax = 35000;
     else if (maxLoad <= 8000) baseTax = 40500;
-    else {
-        const extraTons = Math.ceil((maxLoad - 8000) / 1000);
-        baseTax = 40500 + (extraTons * 5500);
-    }
-    if (category === "over13" || category === "over18") {
+    else baseTax = 40500 + (Math.ceil((maxLoad - 8000) / 1000) * 5500);
+
+    if (category === "over11" || category === "over13" || category === "over18") {
         return Math.floor((baseTax * 1.1) / 100) * 100;
     }
     return baseTax;
