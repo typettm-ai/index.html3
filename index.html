@@ -385,13 +385,51 @@ function getWeightTaxPassenger(weight, category, term) {
 }
 
 // 重量税：貨物車
+// 重量税：貨物車（1・4ナンバー等）の完全版ロジック
 function getWeightTaxCargo(totalWeight, category, term) {
     if (totalWeight <= 0 || term <= 0) return 0;
-    let pricePerTonPerYear = 4100; 
-    if (category === "eco") pricePerTonPerYear = 2500;       
-    if (category === "over13") pricePerTonPerYear = 5400;    
-    if (category === "over18") pricePerTonPerYear = 5700;    
-    return pricePerTonPerYear * Math.ceil(totalWeight / 1000) * term;
+    
+    let yearlyPrice = 0;
+    
+    if (category === "eco") {
+        if (totalWeight <= 1000) yearlyPrice = 2500;
+        else if (totalWeight <= 2000) yearlyPrice = 5000;
+        else if (totalWeight <= 3000) yearlyPrice = 7500; // エコカーは2.5t〜3tが同額
+        else {
+            let extraTons = Math.ceil((totalWeight - 3000) / 1000);
+            yearlyPrice = 7500 + (extraTons * 2500);
+        }
+    } else if (category === "standard") {
+        if (totalWeight <= 1000) yearlyPrice = 3300;
+        else if (totalWeight <= 2000) yearlyPrice = 6600;
+        else if (totalWeight <= 2500) yearlyPrice = 9900;
+        else if (totalWeight <= 3000) yearlyPrice = 12300;
+        else {
+            let extraTons = Math.ceil((totalWeight - 3000) / 1000);
+            yearlyPrice = 12300 + (extraTons * 4100);
+        }
+    } else if (category === "over13") {
+        if (totalWeight <= 1000) yearlyPrice = 3800;
+        else if (totalWeight <= 2000) yearlyPrice = 7600;
+        else if (totalWeight <= 2500) yearlyPrice = 11400;
+        else if (totalWeight <= 3000) yearlyPrice = 15000;
+        else {
+            let extraTons = Math.ceil((totalWeight - 3000) / 1000);
+            yearlyPrice = 15000 + (extraTons * 5000);
+        }
+    } else if (category === "over18") {
+        if (totalWeight <= 1000) yearlyPrice = 4400;
+        else if (totalWeight <= 2000) yearlyPrice = 8800;
+        else if (totalWeight <= 2500) yearlyPrice = 13200;
+        else if (totalWeight <= 3000) yearlyPrice = 18900;
+        else {
+            let extraTons = Math.ceil((totalWeight - 3000) / 1000);
+            yearlyPrice = 18900 + (extraTons * 6300);
+        }
+    }
+    
+    // 最後に支払年数（トラック継続車検なら通常1年分、新車なら2年分など）を掛ける
+    return yearlyPrice * term;
 }
 
 // 自動車税：乗用車
