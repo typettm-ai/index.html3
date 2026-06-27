@@ -88,7 +88,7 @@
         <span id="badgeArea"></span><br>
 
         <label for="firstRegYearSelect">初度登録年月：</label> 
-        <select id="firstRegYearSelect" class="input-inline text-left" style="width: 320px; display: inline-block; margin-top: 0;"></select>
+        <select id="firstRegYearSelect" class="input-inline text-left" style="width: 360px; display: inline-block; margin-top: 0;"></select>
         <span id="taxCategoryBadge" style="font-size: 14px; font-weight: bold; margin-left: 4px;"></span> <br>
 
         <!-- 支払年数 -->
@@ -156,29 +156,50 @@ const evPrefixes = ["ZAA", "ZAB", "ZBA", "ZLA", "EAA", "CAA"];
 const ecoPrefixes = ["6AA", "4AA", "5AA", "3AA", "DAA"];
 const dieselPrefixes = ["3DA", "1DA", "QDF", "3DF", "LDA", "LDF", "ADF", "BDF", "CDA", "FDA", "SDA"];
 
-// ★ 100%確実に動くようにHTML文字列結合方式に修正
+// ★ 2026年の最新税額区分ベースのグループ分けにアップデート
 function initYearSelect() {
     const select = document.getElementById("firstRegYearSelect");
-    const currentYear = new Date().getFullYear();
     let html = "";
     
-    // 普段よく使う直近15年を上部にまとめる
-    html += '<optgroup label="--- 直近15年 ---">';
-    for (let y = currentYear; y >= (currentYear - 14); y--) {
-        if (y === 2019) {
-            html += '<option value="2019_10">令和元年(2019) 10月以降 ［新税率］</option>';
-        } else {
-            let w = (y >= 2019) ? `令和${y - 2018}` : `平成${y - 1988}`;
-            html += `<option value="${y}">${w}年 (${y}年)</option>`;
-        }
-    }
+    // 1. 新税率グループ (2019年10月以降)
+    html += '<optgroup label="▼ 新税率（令和元年10月以降）">';
+    html += '<option value="2026">令和8年 (2026年)</option>';
+    html += '<option value="2025">令和7年 (2025年)</option>';
+    html += '<option value="2024">令和6年 (2024年)</option>';
+    html += '<option value="2023">令和5年 (2023年)</option>';
+    html += '<option value="2022">令和4年 (2022年)</option>';
+    html += '<option value="2021">令和3年 (2021年)</option>';
+    html += '<option value="2020">令和2年 (2020年)</option>';
+    html += '<option value="2019_10">令和元年 (2019年) 10月以降</option>';
     html += '</optgroup>';
 
-    // 古い年式は下に分ける
-    html += '<optgroup label="--- それ以前 ---">';
-    html += '<option value="2019_9">令和元年/平成31年(2019) 9月以前</option>';
-    for (let y = (currentYear - 15); y >= 1990; y--) {
-        let w = (y > 1988) ? `平成${y - 1988}` : `昭和${y - 1925}`;
+    // 2. 標準税率グループ (重課なし)
+    html += '<optgroup label="▼ 標準税率（重課なし）">';
+    html += '<option value="2019_9">令和元年/平成31年 (2019年) 9月以前</option>';
+    html += '<option value="2018">平成30年 (2018年)</option>';
+    html += '<option value="2017">平成29年 (2017年)</option>';
+    html += '<option value="2016">平成28年 (2016年)</option>';
+    html += '</optgroup>';
+
+    // 3. 11年経過グループ (ディーゼル車重課対象)
+    html += '<optgroup label="▼ 11年経過（ディーゼル重課対象年）">';
+    html += '<option value="2015">平成27年 (2015年)</option>';
+    html += '<option value="2014">平成26年 (2014年)</option>';
+    html += '</optgroup>';
+
+    // 4. 13年経過グループ (ガソリン重課・重量税重課)
+    html += '<optgroup label="▼ 13年経過（自動車税・重量税 重課）">';
+    html += '<option value="2013">平成25年 (2013年)</option>';
+    html += '<option value="2012">平成24年 (2012年)</option>';
+    html += '<option value="2011">平成23年 (2011年)</option>';
+    html += '<option value="2010">平成22年 (2010年)</option>';
+    html += '<option value="2009">平成21年 (2009年)</option>';
+    html += '</optgroup>';
+
+    // 5. 18年経過グループ (重量税 最高重課)
+    html += '<optgroup label="▼ 18年経過（重量税 さらに重課）">';
+    for (let y = 2008; y >= 1990; y--) {
+        let w = `平成${y - 1988}`;
         html += `<option value="${y}">${w}年 (${y}年)</option>`;
     }
     html += '<option value="1988">昭和63年以前</option>';
