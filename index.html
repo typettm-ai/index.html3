@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>車検証税額チェッカー 確定版 (1ファイル完全完結)</title>
+    <title>車検証税額チェッカー 永久保存版 (1ファイル完全完結)</title>
     <!-- Tesseract.js（OCRライブラリ）の読み込み -->
     <script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
@@ -33,8 +33,8 @@
     </style>
 </head>
 <body>
-    <h1>車検証税額チェッカー 確定版</h1>
-    <p>画像は端末内のみで処理されます（サーバー非送信・完全1ファイル完結）。</p>
+    <h1>車検証税額チェッカー 永久保存版</h1>
+    <p>画像は端末内のみで処理されます（自動で現在の年度に合わせた重課判定を行います）。</p>
 
     <!-- 設定カード -->
     <div class="card">
@@ -89,10 +89,10 @@
         <label for="taxRateSelect">初度登録年(自動車税区分)：</label> 
         <select id="taxRateSelect" class="input-inline text-left" style="width: 360px; display: inline-block; margin-top: 0;">
             <option value="new">令和元年10月 以降 ［新税率］</option>
-            <option value="normal">平成28年 〜 令和元年9月 ［標準（11年未満）］</option>
-            <option value="over11">平成25年 〜 平成27年 ［11年経過（ディーゼル重課）］</option>
-            <option value="over13">平成20年 〜 平成24年 ［13年経過重課］</option>
-            <option value="over18">平成19年 以前 ［18年経過さらに重課］</option>
+            <option value="normal">標準（重課なし / 11年未満）</option>
+            <option value="over11">11年経過（ディーゼル車重課対象）</option>
+            <option value="over13">13年経過重課（ガソリン車等重課対象）</option>
+            <option value="over18">18年経過さらに重課（重量税最高値）</option>
         </select>
         <span id="firstRegDisplay" style="font-size: 14px; color: #888; margin-left: 4px;"></span> <br>
 
@@ -284,16 +284,20 @@ function parseData(text) {
         
         let seirekiYear = (era === "平成") ? (1988 + year) : (2018 + year);
 
+        // ★【修正】現在の端末時間から経過年数を動的に割り出す（年度跨ぎ対策）
+        const currentYear = new Date().getFullYear();
+        const passedYears = currentYear - seirekiYear;
+
         if (seirekiYear >= 2020 || (seirekiYear === 2019 && month >= 10)) {
-            detectedCategory = "new";
-        } else if (seirekiYear >= 2016 || (seirekiYear === 2019 && month < 10)) {
-            detectedCategory = "normal";
-        } else if (seirekiYear >= 2013 && seirekiYear <= 2015) {
-            detectedCategory = "over11";
-        } else if (seirekiYear >= 2008 && seirekiYear <= 2012) {
-            detectedCategory = "over13";
+            detectedCategory = "new"; // 令和元年10月以降の新税率
+        } else if (passedYears >= 18) {
+            detectedCategory = "over18"; // 18年経過
+        } else if (passedYears >= 13) {
+            detectedCategory = "over13"; // 13年経過
+        } else if (passedYears >= 11) {
+            detectedCategory = "over11"; // 11年経過
         } else {
-            detectedCategory = "over18";
+            detectedCategory = "normal"; // 標準（経過なし）
         }
     }
     
@@ -355,7 +359,6 @@ function calculateTaxes() {
         else if (carTaxCategory === "over18") weightTaxCategory = "over18";
     }
     
-    // 重量税の適用カテゴリー表示をリアルタイム更新
     const categoryLabels = {
         "eco": "エコカー（本則税率）",
         "standard": "標準税率（13年未満）",
@@ -407,7 +410,6 @@ function updateMonthlyDisplay() {
     }
 }
 
-// 普通車の重量税ロジック（0.5t刻み）
 function getWeightTaxPassenger(weight, category, term) {
     if (weight <= 0 || term <= 0) return 0;
     let pricePerUnitPerYear = 4100; 
@@ -501,7 +503,7 @@ function getCarTaxYearlyCamping(cc, category) {
         if (cc <= 1.0) baseTax = 23600; else if (cc <= 1.5) baseTax = 27600;
         else if (cc <= 2.0) baseTax = 31600; else if (cc <= 2.5) baseTax = 36000;
         else if (cc <= 3.0) baseTax = 40800; else if (cc <= 3.5) baseTax = 46400;
-        else if (cc <= 5.0) baseTax = 53200; else if (cc <= 4.5) baseTax = 61200;
+        else if (cc <= 4.0) baseTax = 53200; else if (cc <= 4.5) baseTax = 61200;
         else if (cc <= 6.0) baseTax = 70400; else baseTax = 88800;
     }
     if (["over11", "over13", "over18"].includes(category) && category !== "new") {
