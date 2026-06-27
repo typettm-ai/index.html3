@@ -156,35 +156,35 @@ const evPrefixes = ["ZAA", "ZAB", "ZBA", "ZLA", "EAA", "CAA"];
 const ecoPrefixes = ["6AA", "4AA", "5AA", "3AA", "DAA"];
 const dieselPrefixes = ["3DA", "1DA", "QDF", "3DF", "LDA", "LDF", "ADF", "BDF", "CDA", "FDA", "SDA"];
 
-// ★ 年式選択をスッキリ簡素化する処理
+// ★ 100%確実に動くようにHTML文字列結合方式に修正
 function initYearSelect() {
     const select = document.getElementById("firstRegYearSelect");
-    select.innerHTML = "";
     const currentYear = new Date().getFullYear();
+    let html = "";
     
     // 普段よく使う直近15年を上部にまとめる
-    const groupRecent = document.createElement("optgroup");
-    groupRecent.label = "--- 直近15年 ---";
+    html += '<optgroup label="--- 直近15年 ---">';
     for (let y = currentYear; y >= (currentYear - 14); y--) {
         if (y === 2019) {
-            groupRecent.add(new Option("令和元年(2019) 10月以降 ［新税率］", "2019_10"));
+            html += '<option value="2019_10">令和元年(2019) 10月以降 ［新税率］</option>';
         } else {
             let w = (y >= 2019) ? `令和${y - 2018}` : `平成${y - 1988}`;
-            groupRecent.add(new Option(`${w}年 (${y}年)`, y.toString()));
+            html += `<option value="${y}">${w}年 (${y}年)</option>`;
         }
     }
-    select.add(groupRecent);
+    html += '</optgroup>';
 
-    // 古い年式はスクロールの邪魔にならないよう下に分ける
-    const groupOld = document.createElement("optgroup");
-    groupOld.label = "--- それ以前 ---";
-    groupOld.add(new Option("令和元年/平成31年(2019) 9月以前", "2019_9"));
+    // 古い年式は下に分ける
+    html += '<optgroup label="--- それ以前 ---">';
+    html += '<option value="2019_9">令和元年/平成31年(2019) 9月以前</option>';
     for (let y = (currentYear - 15); y >= 1990; y--) {
         let w = (y > 1988) ? `平成${y - 1988}` : `昭和${y - 1925}`;
-        groupOld.add(new Option(`${w}年 (${y}年)`, y.toString()));
+        html += `<option value="${y}">${w}年 (${y}年)</option>`;
     }
-    groupOld.add(new Option("昭和63年以前", "1988"));
-    select.add(groupOld);
+    html += '<option value="1988">昭和63年以前</option>';
+    html += '</optgroup>';
+    
+    select.innerHTML = html;
 }
 initYearSelect();
 
@@ -312,11 +312,11 @@ function parseData(text) {
         if (seirekiYear === 2019) {
             selectValue = (month >= 10) ? "2019_10" : "2019_9";
         } else if (seirekiYear < 1989) {
-            selectValue = "1989";
+            selectValue = "1988";
         }
         
         const yearSelect = document.getElementById("firstRegYearSelect");
-        if (Array.from(yearSelect.options).some(opt => opt.value === selectValue)) {
+        if (yearSelect.querySelector(`option[value="${selectValue}"]`)) {
             yearSelect.value = selectValue;
         }
     }
@@ -458,7 +458,7 @@ function updateMonthlyDisplay() {
     
     if (currentYearlyTax > 0) {
         const monthlyAmount = getCarTaxMonthly(currentYearlyTax, selectedMonth);
-        let text = `<b style="font-size: 20px; color: #0066cc;">${selectedMonth}月登録の月割り額: ${monthlyAmount.toLocaleString()}円</b>`;
+        let text = `<b style="font-size: 20px; color: #0066cc;">${selectedMonth}月登録 of 月割り額: ${monthlyAmount.toLocaleString()}円</b>`;
         if (selectedMonth === 3) text = `<b style="font-size: 20px; color: #ff3333;">3月登録の月割り額: 0円</b> (当期分なし)`;
         monthlyTaxEl.innerHTML = text;
     } else {
@@ -564,7 +564,7 @@ function getCarTaxYearlyCamping(cc, category, isEV) {
         else if (cc <= 2.0) baseTax = 31600; else if (cc <= 2.5) baseTax = 36000;
         else if (cc <= 3.0) baseTax = 40800; else if (cc <= 3.5) baseTax = 46400;
         else if (cc <= 4.0) baseTax = 53200; else if (cc <= 4.5) baseTax = 61200;
-        else if (cc <= 6.0) baseTax = 70400; else baseTax = 88800;
+        else if (cc <= 7.0) baseTax = 70400; else baseTax = 88800;
     }
     if (["over11", "over13", "over18"].includes(category) && category !== "new") {
         let oldTax = getCarTaxYearlyCamping(cc, "normal");
