@@ -87,12 +87,9 @@
         <input type="text" id="modelInput" class="input-inline text-left" style="width: 150px;" placeholder="例: 3DA"> 
         <span id="badgeArea"></span><br>
 
-        <!-- ★ UIを年式選択に復活させました -->
         <label for="firstRegYearSelect">初度登録年月：</label> 
-        <select id="firstRegYearSelect" class="input-inline text-left" style="width: 280px; display: inline-block; margin-top: 0;">
-            <!-- JSで動的に「令和〇年/平成〇年」が生成されます -->
-        </select>
-        <span id="taxCategoryBadge" style="font-size: 14px; font-weight: bold; margin-left: 8px;"></span> <br>
+        <select id="firstRegYearSelect" class="input-inline text-left" style="width: 320px; display: inline-block; margin-top: 0;"></select>
+        <span id="taxCategoryBadge" style="font-size: 14px; font-weight: bold; margin-left: 4px;"></span> <br>
 
         <!-- 支払年数 -->
         <label for="weightTaxTermSelect">重量税の支払年数：</label> 
@@ -130,7 +127,7 @@
         
         <strong>自動車税（種別割）年額： <span id="carTaxYearly">-</span></strong>
         
-        <!-- 月割り金額の表示エリア -->
+        <!-- 月割り金額 of 自動車税 -->
         <div class="monthly-box">
             <strong>自動車税（種別割）月割り計算結果：</strong><br>
             <span id="carTaxMonthly">条件を入力し計算を実行すると表示されます</span><br>
@@ -159,27 +156,35 @@ const evPrefixes = ["ZAA", "ZAB", "ZBA", "ZLA", "EAA", "CAA"];
 const ecoPrefixes = ["6AA", "4AA", "5AA", "3AA", "DAA"];
 const dieselPrefixes = ["3DA", "1DA", "QDF", "3DF", "LDA", "LDF", "ADF", "BDF", "CDA", "FDA", "SDA"];
 
-// ★ロード時に動的に年式リストを生成
+// ★ 年式選択をスッキリ簡素化する処理
 function initYearSelect() {
     const select = document.getElementById("firstRegYearSelect");
-    select.innerHTML = ""; // 初期化
+    select.innerHTML = "";
     const currentYear = new Date().getFullYear();
     
-    for (let y = currentYear; y >= 1990; y--) {
+    // 普段よく使う直近15年を上部にまとめる
+    const groupRecent = document.createElement("optgroup");
+    groupRecent.label = "--- 直近15年 ---";
+    for (let y = currentYear; y >= (currentYear - 14); y--) {
         if (y === 2019) {
-            // 2019年だけは税制の分かれ目のため月で分ける
-            select.add(new Option("令和元年(2019) 10月以降 ［新税率］", "2019_10"));
-            select.add(new Option("令和元年/平成31(2019) 9月以前", "2019_9"));
+            groupRecent.add(new Option("令和元年(2019) 10月以降 ［新税率］", "2019_10"));
         } else {
-            let wareki = "";
-            if (y >= 2019) wareki = `令和${y - 2018}年`;
-            else if (y > 1988) wareki = `平成${y - 1988}年`;
-            else wareki = `昭和${y - 1925}年`;
-            
-            select.add(new Option(`${wareki} (${y}年)`, y.toString()));
+            let w = (y >= 2019) ? `令和${y - 2018}` : `平成${y - 1988}`;
+            groupRecent.add(new Option(`${w}年 (${y}年)`, y.toString()));
         }
     }
-    select.add(new Option("平成元年(1989) 以前", "1989"));
+    select.add(groupRecent);
+
+    // 古い年式はスクロールの邪魔にならないよう下に分ける
+    const groupOld = document.createElement("optgroup");
+    groupOld.label = "--- それ以前 ---";
+    groupOld.add(new Option("令和元年/平成31年(2019) 9月以前", "2019_9"));
+    for (let y = (currentYear - 15); y >= 1990; y--) {
+        let w = (y > 1988) ? `平成${y - 1988}` : `昭和${y - 1925}`;
+        groupOld.add(new Option(`${w}年 (${y}年)`, y.toString()));
+    }
+    groupOld.add(new Option("昭和63年以前", "1988"));
+    select.add(groupOld);
 }
 initYearSelect();
 
@@ -311,7 +316,6 @@ function parseData(text) {
         }
         
         const yearSelect = document.getElementById("firstRegYearSelect");
-        // 存在しない年ならセットしない
         if (Array.from(yearSelect.options).some(opt => opt.value === selectValue)) {
             yearSelect.value = selectValue;
         }
@@ -351,7 +355,6 @@ function calculateTaxes() {
     const cleanModel = modelRaw.replace(/[^A-Z0-9]/g, ""); 
     const modelHead = cleanModel.slice(0, 3);
     
-    // ★ 選択された年から動的に経過年数を計算
     const regValue = document.getElementById("firstRegYearSelect").value;
     let regYear = 0;
     let isNewTax = false;
@@ -361,7 +364,7 @@ function calculateTaxes() {
     } else if (regValue === "2019_9") {
         regYear = 2019; isNewTax = false;
     } else {
-        regYear = parseInt(regValue) || 2024;
+        regYear = parseInt(regValue) || 2026;
         if (regYear >= 2020) isNewTax = true;
     }
 
@@ -379,7 +382,6 @@ function calculateTaxes() {
         carTaxCategory = "over11";
     }
 
-    // 画面に適用状況をバッジで表示
     const badgeEl = document.getElementById("taxCategoryBadge");
     if (carTaxCategory === "new") badgeEl.innerHTML = '<span style="color: #0066cc;">[新税率適用]</span>';
     else if (carTaxCategory === "over18") badgeEl.innerHTML = '<span style="color: #ff3333;">[18年経過 重課]</span>';
@@ -387,7 +389,6 @@ function calculateTaxes() {
     else if (carTaxCategory === "over11") badgeEl.innerHTML = '<span style="color: #d4a017;">[11年経過 重課対象年]</span>';
     else badgeEl.innerHTML = '<span style="color: #28a745;">[標準（重課なし）]</span>';
 
-    // EV・エコ・ディーゼルの判定
     let weightTaxCategory = "standard"; 
     const isEV = evPrefixes.includes(modelHead);
     const isEco = ecoPrefixes.includes(modelHead);
@@ -396,11 +397,11 @@ function calculateTaxes() {
     if (isEV) {
         weightTaxCategory = "ev";
         document.getElementById("badgeArea").innerHTML = '<span class="badge-ev">電気自動車 / PHEV判定</span>';
-        if (["over11", "over13", "over18"].includes(carTaxCategory)) carTaxCategory = "normal"; // EVは重課なし
+        if (["over11", "over13", "over18"].includes(carTaxCategory)) carTaxCategory = "normal";
     } else if (isEco) {
         weightTaxCategory = "eco";
         document.getElementById("badgeArea").innerHTML = '<span class="badge-eco">エコカー判定（重課免除）</span>';
-        if (["over11", "over13", "over18"].includes(carTaxCategory)) carTaxCategory = "normal"; // エコカーは重課なし
+        if (["over11", "over13", "over18"].includes(carTaxCategory)) carTaxCategory = "normal";
     } else if (isDiesel) {
         document.getElementById("badgeArea").innerHTML = '<span class="badge-diesel">ディーゼル車判定</span>';
         if (carTaxCategory === "over11") weightTaxCategory = "standard"; 
@@ -408,7 +409,7 @@ function calculateTaxes() {
         else if (carTaxCategory === "over18") weightTaxCategory = "over18";
     } else {
         document.getElementById("badgeArea").innerHTML = '';
-        if (carTaxCategory === "over11") carTaxCategory = "normal"; // ガソリンは11年重課なし
+        if (carTaxCategory === "over11") carTaxCategory = "normal";
         else if (carTaxCategory === "over13") weightTaxCategory = "over13";
         else if (carTaxCategory === "over18") weightTaxCategory = "over18";
     }
@@ -467,7 +468,7 @@ function updateMonthlyDisplay() {
 
 function getWeightTaxPassenger(weight, category, term) {
     if (weight <= 0 || term <= 0) return 0;
-    if (category === "ev") return 0; // EV・PHEVは免税
+    if (category === "ev") return 0;
     let pricePerUnitPerYear = 4100; 
     if (category === "eco") pricePerUnitPerYear = 2500;       
     if (category === "over13") pricePerUnitPerYear = 5700;    
@@ -477,7 +478,7 @@ function getWeightTaxPassenger(weight, category, term) {
 
 function getWeightTaxCargo(totalWeight, category, term) {
     if (totalWeight <= 0 || term <= 0) return 0;
-    if (category === "ev") return 0; // EV・PHEVは免税
+    if (category === "ev") return 0;
     let yearlyPrice = 0;
     
     if (category === "eco") {
