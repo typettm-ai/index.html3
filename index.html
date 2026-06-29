@@ -43,7 +43,8 @@
             <label style="font-weight: bold;" for="carTypeSelect">1. 車種区分を選択：</label>
             <select id="carTypeSelect">
                 <option value="passenger">乗用車 (3 / 5ナンバー等)</option>
-                <option value="cargo">貨物車・トラック (1 / 4ナンバー等)</option>
+                <option value="cargo_truck">貨物車：トラック等 (乗車定員 3人以下)</option>
+                <option value="cargo_mixed">貨物車：バン・SUV等 (乗車定員 4人以上 / 貨客兼用)</option>
                 <option value="special_camping">8ナンバー：キャンピング車</option>
                 <option value="special_other">8ナンバー：その他特種用途 (事務室・宣伝車等)</option>
             </select>
@@ -156,12 +157,10 @@ const evPrefixes = ["ZAA", "ZAB", "ZBA", "ZLA", "EAA", "CAA"];
 const ecoPrefixes = ["6AA", "4AA", "5AA", "3AA", "DAA"];
 const dieselPrefixes = ["3DA", "1DA", "QDF", "3DF", "LDA", "LDF", "ADF", "BDF", "CDA", "FDA", "SDA"];
 
-// ★ 2026年の最新税額区分ベースのグループ分けにアップデート
 function initYearSelect() {
     const select = document.getElementById("firstRegYearSelect");
     let html = "";
     
-    // 1. 新税率グループ (2019年10月以降)
     html += '<optgroup label="▼ 新税率（令和元年10月以降）">';
     html += '<option value="2026">令和8年 (2026年)</option>';
     html += '<option value="2025">令和7年 (2025年)</option>';
@@ -173,7 +172,6 @@ function initYearSelect() {
     html += '<option value="2019_10">令和元年 (2019年) 10月以降</option>';
     html += '</optgroup>';
 
-    // 2. 標準税率グループ (重課なし)
     html += '<optgroup label="▼ 標準税率（重課なし）">';
     html += '<option value="2019_9">令和元年/平成31年 (2019年) 9月以前</option>';
     html += '<option value="2018">平成30年 (2018年)</option>';
@@ -181,13 +179,11 @@ function initYearSelect() {
     html += '<option value="2016">平成28年 (2016年)</option>';
     html += '</optgroup>';
 
-    // 3. 11年経過グループ (ディーゼル車重課対象)
     html += '<optgroup label="▼ 11年経過（ディーゼル重課対象年）">';
     html += '<option value="2015">平成27年 (2015年)</option>';
     html += '<option value="2014">平成26年 (2014年)</option>';
     html += '</optgroup>';
 
-    // 4. 13年経過グループ (ガソリン重課・重量税重課)
     html += '<optgroup label="▼ 13年経過（自動車税・重量税 重課）">';
     html += '<option value="2013">平成25年 (2013年)</option>';
     html += '<option value="2012">平成24年 (2012年)</option>';
@@ -196,7 +192,6 @@ function initYearSelect() {
     html += '<option value="2009">平成21年 (2009年)</option>';
     html += '</optgroup>';
 
-    // 5. 18年経過グループ (重量税 最高重課)
     html += '<optgroup label="▼ 18年経過（重量税 さらに重課）">';
     for (let y = 2008; y >= 1990; y--) {
         let w = `平成${y - 1988}`;
@@ -238,7 +233,12 @@ carTypeSelect.addEventListener("change", function() {
         ccField.style.display = "block";
         weightField.style.display = "block";
         weightTaxTermSelect.value = "2"; 
-    } else if (type === "cargo") {
+    } else if (type === "cargo_truck") {
+        maxLoadField.style.display = "block";
+        totalWeightField.style.display = "block";
+        weightTaxTermSelect.value = "1"; 
+    } else if (type === "cargo_mixed") {
+        ccField.style.display = "block"; // 貨客兼用は排気量も表示
         maxLoadField.style.display = "block";
         totalWeightField.style.display = "block";
         weightTaxTermSelect.value = "1"; 
@@ -456,9 +456,12 @@ function calculateTaxes() {
     if (type === "passenger") {
         weightTaxAmount = getWeightTaxPassenger(w, weightTaxCategory, term);
         currentYearlyTax = getCarTaxYearlyPassenger(cc, carTaxCategory, isEV);
-    } else if (type === "cargo") {
+    } else if (type === "cargo_truck") {
         weightTaxAmount = getWeightTaxCargo(totalWeight, weightTaxCategory, term);
         currentYearlyTax = getCarTaxYearlyCargo(maxLoad, carTaxCategory);
+    } else if (type === "cargo_mixed") {
+        weightTaxAmount = getWeightTaxCargo(totalWeight, weightTaxCategory, term);
+        currentYearlyTax = getCarTaxYearlyCargoMixed(maxLoad, cc, carTaxCategory);
     } else if (type === "special_camping") {
         weightTaxAmount = getWeightTaxCargo(totalWeight, weightTaxCategory, term);
         currentYearlyTax = getCarTaxYearlyCamping(cc, carTaxCategory, isEV);
@@ -566,6 +569,37 @@ function getCarTaxYearlyCargo(maxLoad, category) {
     else if (maxLoad <= 8000) baseTax = 40500;
     else baseTax = 40500 + (Math.ceil((maxLoad - 8000) / 1000) * 5500);
 
+    if (["over11", "over13", "over18"].includes(category)) return Math.floor((baseTax * 1.1) / 100) * 100;
+    return baseTax;
+}
+
+// ★ 新設：貨客兼用車（定員4人以上）の自動車税ロジック
+function getCarTaxYearlyCargoMixed(maxLoad, cc, category) {
+    if (maxLoad <= 0) return 0;
+    let baseTax = 0;
+    
+    // 積載量1トン（1000kg）以下の場合は排気量ベースの専用税率
+    if (maxLoad <= 1000) {
+        if (cc <= 0) return 0;
+        if (cc <= 1.0) baseTax = 13200;
+        else if (cc <= 1.5) baseTax = 14300;
+        else if (cc <= 2.0) baseTax = 16000;
+        else if (cc <= 3.0) baseTax = 22000;
+        else if (cc <= 4.0) baseTax = 27000;
+        else baseTax = 32000;
+    } else {
+        // 積載量1トン超の場合は、通常のトラックと同じ（積載量ベース）
+        if (maxLoad <= 2000) baseTax = 11500;
+        else if (maxLoad <= 3000) baseTax = 16000;
+        else if (maxLoad <= 4000) baseTax = 20500;
+        else if (maxLoad <= 5000) baseTax = 25500;
+        else if (maxLoad <= 6000) baseTax = 30000;
+        else if (maxLoad <= 7000) baseTax = 35000;
+        else if (maxLoad <= 8000) baseTax = 40500;
+        else baseTax = 40500 + (Math.ceil((maxLoad - 8000) / 1000) * 5500);
+    }
+
+    // 経年重課（10%増）
     if (["over11", "over13", "over18"].includes(category)) return Math.floor((baseTax * 1.1) / 100) * 100;
     return baseTax;
 }
