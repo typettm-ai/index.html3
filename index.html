@@ -573,34 +573,36 @@ function getCarTaxYearlyCargo(maxLoad, category) {
     return baseTax;
 }
 
-// ★ 新設：貨客兼用車（定員4人以上）の自動車税ロジック
+// ★ 修正：貨客兼用車（定員4人以上）の自動車税ロジック（埼玉県の税率表に準拠）
 function getCarTaxYearlyCargoMixed(maxLoad, cc, category) {
-    if (maxLoad <= 0) return 0;
-    let baseTax = 0;
+    if (maxLoad <= 0 || cc <= 0) return 0;
     
-    // 積載量1トン（1000kg）以下の場合は排気量ベースの専用税率
+    let baseTax = 0;
+
+    // 1. 最大積載量 1トン（1000kg）以下のもの
     if (maxLoad <= 1000) {
-        if (cc <= 0) return 0;
         if (cc <= 1.0) baseTax = 13200;
         else if (cc <= 1.5) baseTax = 14300;
-        else if (cc <= 2.0) baseTax = 16000;
-        else if (cc <= 3.0) baseTax = 22000;
-        else if (cc <= 4.0) baseTax = 27000;
-        else baseTax = 32000;
-    } else {
-        // 積載量1トン超の場合は、通常のトラックと同じ（積載量ベース）
-        if (maxLoad <= 2000) baseTax = 11500;
-        else if (maxLoad <= 3000) baseTax = 16000;
-        else if (maxLoad <= 4000) baseTax = 20500;
-        else if (maxLoad <= 5000) baseTax = 25500;
-        else if (maxLoad <= 6000) baseTax = 30000;
-        else if (maxLoad <= 7000) baseTax = 35000;
-        else if (maxLoad <= 8000) baseTax = 40500;
-        else baseTax = 40500 + (Math.ceil((maxLoad - 8000) / 1000) * 5500);
+        else baseTax = 16000;
+    } 
+    // 2. 最大積載量 1トンを超え 2トン（2000kg）以下のもの
+    else if (maxLoad <= 2000) {
+        if (cc <= 1.0) baseTax = 16700;
+        else if (cc <= 1.5) baseTax = 17800;
+        else baseTax = 19500;
+    } 
+    // 3. 最大積載量 2トン（2000kg）を超えるもの
+    else {
+        if (cc <= 1.0) baseTax = 22100;
+        else if (cc <= 1.5) baseTax = 23200;
+        else baseTax = 25500;
     }
 
-    // 経年重課（10%増）
-    if (["over11", "over13", "over18"].includes(category)) return Math.floor((baseTax * 1.1) / 100) * 100;
+    // 経年重課（11年/13年/18年経過時は10%増、100円未満切り捨て）
+    if (["over11", "over13", "over18"].includes(category)) {
+        return Math.floor((baseTax * 1.1) / 100) * 100;
+    }
+    
     return baseTax;
 }
 
